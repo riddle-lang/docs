@@ -4,4 +4,4 @@ authors = ["zi2ven"]
 language = "zh-CN"
 src = "src"
 [build]
-build-dir = "../../dist/zh-CN"
+build-dir = "../dist/zh-CN"
