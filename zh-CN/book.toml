@@ -3,5 +3,9 @@ title = "Riddle Docs"
 authors = ["zi2ven"]
 language = "zh-CN"
 src = "src"
+
+[output.html]
+additional-js = ["riddle-highlight.js"]
+
 [build]
 build-dir = "../dist/zh-CN"
