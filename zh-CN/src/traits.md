@@ -1,48 +1,95 @@
 # Trait
 
-Trait 描述一种类型可以提供的能力。
-如果结构体回答“这个值里面有什么数据”，trait 回答的就是“这个值能做什么”。
+Trait 是 Riddle 中定义共享行为的机制。它类似于其他语言中的接口（interface），用于声明一组方法和关联类型，供具体类型来实现。
 
-## 定义 trait
+## 定义 Trait
 
-一个 trait 可以包含函数签名：
+使用 `trait` 关键字定义一个 trait：
 
 ```riddle
-trait Bar {
-    fn bar();
+trait Summary {
+    fun summarize() -> str;
 }
 ```
 
-`Bar` 表示一种能力：实现它的类型必须提供 `bar` 函数。
+`Summary` trait 声明了一个方法 `summarize`，它不接受参数并返回一个 `str`。trait 方法只有签名，没有函数体——实现由具体类型在 `impl` 块中提供。
 
-trait 中的函数目前使用 `fn` 写法。顶层函数当前常用 `fun`，未来 Riddle 可能会统一函数关键字。
+## 为类型实现 Trait
 
-## Trait 是能力边界
-
-Trait 的意义不只是把函数列在一起。它还可以作为抽象边界：调用者只关心某个值是否拥有某种能力，而不需要知道它具体是什么类型。
-
-例如，一个类型只要实现了 `Bar`，就可以被需要 `Bar` 能力的代码使用。
-
-## Trait 和结构体分离
-
-结构体定义数据，trait 定义能力。两者分离能让代码更灵活：
+在 `impl` 块中为某个具体类型实现 trait：
 
 ```riddle
-struct Foo {
+struct Article {
+    title: str,
+    body: str,
+}
+
+impl Summary for Article {
+    fun summarize() -> str {
+        return self.title;
+    }
+}
+```
+
+## 关联类型
+
+Trait 可以包含关联类型，让实现者指定 trait 方法中用到的具体类型：
+
+```riddle
+trait Iterator {
+    type Item;
+    fun next() -> Option<Self::Item>;
+}
+```
+
+在实现时，需要为关联类型指定具体类型：
+
+```riddle
+impl Iterator for Counter {
+    type Item = i32;
+
+    fun next() -> Option<i32> {
+        // ...
+    }
+}
+```
+
+## 内置 Trait
+
+Riddle 提供一些编译器可识别的特殊 trait。
+
+### Copy
+
+`Copy` 是一个标记 trait——它不包含任何方法。当一个类型实现 `Copy` 时，编译器在赋值和传参时会自动进行按位复制，而非移动所有权：
+
+```riddle
+pub trait Copy {
+}
+```
+
+基础类型（`i32`、`bool`、`f64` 等）默认实现了 `Copy`。你也可以为自己的类型实现它，前提是该类型的所有字段也都实现了 `Copy`。
+
+实现了 `Copy` 的类型在赋值后原变量仍然可用：
+
+```riddle
+struct Point {
     x: i32,
     y: i32,
 }
 
-trait Bar {
-    fn bar();
+// Point 的字段都是 i32（Copy），可以安全实现 Copy
+impl Copy for Point { }
+
+fun main() {
+    let p = Point { x: 1, y: 2 };
+    let q = p;    // 复制而非移动
+    print(p.x);   // OK：p 仍然可用
 }
 ```
 
-`Foo` 本身只说明它有哪些字段。至于它是否有 `bar` 能力，要看后面有没有对应的 `impl`。
-
 ## 小结
 
-- trait 描述类型的能力；
-- trait 可以包含函数签名；
-- 结构体负责数据，trait 负责抽象行为；
-- trait 的具体实现写在 `impl` 块中。
+- `trait` 定义共享行为接口；
+- `impl Trait for Type` 为类型实现 trait；
+- 关联类型让 trait 的使用更灵活；
+- `Copy` 是内置标记 trait，实现它的类型使用复制语义而非移动语义。

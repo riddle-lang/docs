@@ -17,3 +17,6 @@
 - [所有权与内存](./ownership-and-memory.md)
   - [移动语义](./move-semantics.md)
   - [引用与逃逸](./references-and-escape.md)
+- [附录](./appendices.md)
+  - [形式化语法](./grammar.md)
+  - [错误码参考](./errorcode.md)
