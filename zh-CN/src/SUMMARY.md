@@ -7,6 +7,8 @@
   - [你好，Riddle](./hello-riddle.md)
 - [Riddle 基础](./basics.md)
   - [变量与可变性](./variables-and-mutability.md)
+  - [类型系统](./type-system.md)
+    - [字符串](./strings.md)
   - [函数](./functions.md)
   - [表达式与块](./expressions-and-blocks.md)
   - [控制流](./control-flow.md)
