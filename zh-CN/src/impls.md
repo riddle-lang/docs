@@ -1,91 +1,113 @@
 # impl 块
 
-`impl` 用来为类型实现函数和 trait。
-Riddle 的 `impl` 设计借鉴 Rust，但做了一个重要改进：一个 `impl` 块可以同时实现多个 trait，从而减少代码分散。
+`impl` 用来给类型添加固有函数，或者为类型实现 trait。当前 Riddle 的写法接近 Rust：`impl Type` 写固有实现，`impl Trait for Type` 写 trait 实现。
 
-## 为类型实现自己的函数
+## 固有 impl
 
-如果只想给类型添加自己的函数，可以写：
+固有 impl 直接写目标类型：
 
 ```riddle
-impl Foo {
-    fn help() -> str {
-        "HELP"
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+impl Point {
+    fun new(x: i32, y: i32) -> Point {
+        Point { x, y }
+    }
+
+    fun x(&self) -> i32 {
+        self.x
     }
 }
 ```
 
-这种写法表示这些函数属于 `Foo` 本身，而不是某个外部 trait 的要求。
-
-## 使用 Self 标记自身函数
-
-你也可以在 trait 列表里写 `Self`：
+关联函数通过路径调用：
 
 ```riddle
-impl Self for Foo {
-    fn help() -> str {
-        "HELP"
+let p = Point::new(1, 2);
+```
+
+带接收者的方法通过点号调用：
+
+```riddle
+let x = p.x();
+```
+
+## self 接收者
+
+方法可以使用 `self`、`&self` 或 `&mut self` 作为第一个参数：
+
+```riddle
+impl Point {
+    fun take(self) -> i32 {
+        self.x
+    }
+
+    fun inspect(&self) -> i32 {
+        self.x
+    }
+
+    fun shift(&mut self, dx: i32) {
+        self.x += dx;
     }
 }
 ```
 
-`Self` 不是必须的。它的作用是明确表示：这个 `impl` 块里包含为类型自己实现的函数。
+`&self` 适合只读访问，`&mut self` 适合修改接收者，`self` 会移动接收者。
 
-## 同时实现多个 trait
+## 泛型 impl
 
-Riddle 支持在一个 `impl` 块中同时实现多个 trait：
+泛型类型可以写泛型 impl：
 
 ```riddle
-trait Bar {
-    fn bar();
+struct Box<T> {
+    value: T,
 }
 
-trait DebugLike {
-    fn debug() -> str;
+impl<T> Box<T> {
+    fun get(&self) -> T {
+        self.value
+    }
 }
 
-impl Self, Bar, DebugLike for Foo {
-    fn bar() {
-    }
-
-    fn debug() -> str {
-        "Foo"
-    }
-
-    fn help() -> str {
-        "HELP"
-    }
+fun main() -> i32 {
+    let b: Box<i32> = Box { value: 1 };
+    b.get()
 }
 ```
 
-这比为每个 trait 都写一个独立 `impl` 更集中。对于一个类型的核心能力，你可以把它们放在一个地方阅读。
+当前 C backend 会为用到的泛型方法生成单态化函数。
 
-## 为什么这样设计
+## Trait impl
 
-Rust 的 trait 系统很强大，但当一个类型实现很多 trait 时，代码可能被拆成很多 `impl` 块。
-这种拆分有时有帮助，但也可能让读者在文件里来回跳转。
-
-Riddle 允许把相关实现放在一起：
+为类型实现 trait 使用 `impl Trait for Type`：
 
 ```riddle
-impl Self, Read, Write for File {
-    fn read() {
+trait Show {
+    fun show(value: i32) -> &str;
+    type Output;
+}
+
+struct Widget {}
+
+impl Show for Widget {
+    fun show(value: i32) -> &str {
+        "ok"
     }
 
-    fn write() {
-    }
-
-    fn close() {
-    }
+    type Output = i32;
 }
 ```
 
-如果你希望分开组织，也可以继续写多个 `impl` 块。Riddle 提供的是选择，而不是强迫所有实现必须集中。
+编译器会检查 trait 要求的方法和关联类型是否完整、签名是否匹配。
 
 ## 小结
 
-- `impl Foo` 为类型实现自己的函数；
-- `impl Self for Foo` 可以显式标记自身函数实现；
-- `impl Self, Bar for Foo` 可以同时写自身函数和 trait 实现；
-- 一个 `impl` 块可以实现多个 trait；
-- 这种设计减少了代码分散，让相关实现更容易放在一起阅读。
+- `impl Type` 定义固有函数和方法；
+- `Type::function(...)` 调用关联函数；
+- `value.method(...)` 调用带接收者的方法；
+- `impl<T> Type<T>` 支持泛型 impl；
+- `impl Trait for Type` 为类型实现 trait；
+- trait impl 会检查方法签名和关联类型。

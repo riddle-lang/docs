@@ -57,15 +57,15 @@ fun main() {
 }
 ```
 
-## C FFI 中的 `&str`
+## C backend 中的 `&str`
 
-通过 C 后端（`--backend c`）编译时，`&str` 映射为 C 的胖指针结构体：
+通过 C 后端（`--backend c`）编译时，Riddle 内部的 `str` / `&str` 使用胖指针结构体：
 
 ```c
 struct { const char* ptr; size_t len; }
 ```
 
-这使得 Riddle 可以调用接受字符串的 C 函数，并携带长度信息：
+当 `str` 或 `&str` 作为外部 C 函数参数传出时，C backend 会取其中的 `ptr`，按 `const char*` 传给 C：
 
 ```riddle
 extern "C" fun puts(s: str) -> i32;
@@ -84,7 +84,7 @@ fun main() {
 | `String` | 堆分配的可增长字符串 | 暂无 |
 | 字面量类型 | `&'static str` | `str`（自动强制转换为 `&str`） |
 | 生命周期 | 需要标注生命周期 | 无生命周期标注，逃逸分析自动处理 |
-| C ABI | 需显式转换 `CStr` | `str` 直接映射为胖指针结构体 |
+| C ABI | 需显式转换 `CStr` | 外部 C 参数中 `str` / `&str` 传为 `const char*` |
 
 ## 内部表示
 

@@ -21,14 +21,17 @@ struct Foo {
 }
 
 trait Bar {
-    fn bar();
+    fun bar(value: i32) -> i32;
 }
 
-impl Self, Bar for Foo {
-    fn bar() {
+impl Bar for Foo {
+    fun bar(value: i32) -> i32 {
+        value
     }
+}
 
-    fn help() -> str {
+impl Foo {
+    fun help(&self) -> &str {
         "HELP"
     }
 }
@@ -38,8 +41,9 @@ impl Self, Bar for Foo {
 
 - `struct Foo` 定义数据的形状；
 - `trait Bar` 定义一组能力；
-- `impl Self, Bar for Foo` 同时为 `Foo` 实现自己的函数和 `Bar` 要求的函数；
-- `fn help() -> str` 定义带返回类型的函数。
+- `impl Bar for Foo` 为 `Foo` 实现 trait；
+- `impl Foo` 为 `Foo` 添加自己的方法；
+- `fun help(&self) -> &str` 定义带接收者和返回类型的方法。
 
 Riddle 的设计会尽量让这些概念保持直观。你可以先把它理解成一门偏工程化的语言：代码由数据、函数、trait 和 impl 组织起来，值的传递遵循移动语义，引用是否逃逸会决定对象放在栈上还是提升到 GC 管理区域。
 

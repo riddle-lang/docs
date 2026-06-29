@@ -34,6 +34,53 @@ foo.x
 foo.y
 ```
 
+当局部变量名和字段名相同时，可以使用字段简写：
+
+```riddle
+fun make_foo(x: i32, y: i32) -> Foo {
+    Foo { x, y }
+}
+```
+
+结构体字面量会检查字段是否存在、是否缺失以及字段类型是否匹配。
+
+## 泛型结构体
+
+结构体可以带类型参数：
+
+```riddle
+struct Box<T> {
+    value: T,
+}
+
+fun main() -> i32 {
+    let b: Box<i32> = Box { value: 1 };
+    b.value
+}
+```
+
+类型参数可以嵌套使用，`>` 之间不需要空格：
+
+```riddle
+let b: Box<Box<i32>> = Box { value: Box { value: 1 } };
+```
+
+## 关联函数
+
+可以在 `impl` 块中给结构体定义关联函数，并通过 `Type::function(...)` 调用：
+
+```riddle
+impl Foo {
+    fun new(x: i32, y: i32) -> Foo {
+        Foo { x, y }
+    }
+}
+
+fun main() {
+    let foo = Foo::new(1, 2);
+}
+```
+
 ## 结构体值会被移动
 
 结构体也是普通值，因此遵循移动语义：
@@ -71,6 +118,9 @@ fun main() {
 - `struct` 定义命名数据类型；
 - 结构体字段有名字和类型；
 - 结构体字面量用于创建值；
+- 字段名和变量名相同时可以简写；
 - 点号用于字段访问；
+- 结构体可以带类型参数；
+- `impl` 可以定义关联函数；
 - 结构体值默认移动；
 - 临时访问可以使用引用。

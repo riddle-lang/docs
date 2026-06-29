@@ -1,6 +1,6 @@
 # 控制流
 
-控制流决定程序在不同条件下执行哪些代码。Riddle 提供常见的 `if` 和 `while`。
+控制流决定程序在不同条件下执行哪些代码。Riddle 提供 `if`、`while` 和 `match`。
 
 ## if 表达式
 
@@ -69,10 +69,43 @@ fun count_to_three() {
 
 循环中经常会用到 `mut`，因为循环变量需要更新。
 
+## match 表达式
+
+`match` 根据值的形状选择分支：
+
+```riddle
+enum Maybe {
+    None,
+    Some(i32),
+}
+
+fun unwrap_or_zero(value: Maybe) -> i32 {
+    match value {
+        Maybe::Some(n) => n,
+        Maybe::None => 0,
+    }
+}
+```
+
+`match` arm 可以带 guard：
+
+```riddle
+fun classify(n: i32) -> i32 {
+    match n {
+        x if x < 0 => -1,
+        0 => 0,
+        _ => 1,
+    }
+}
+```
+
+当前模式支持 `_`、标识符绑定、字面量、路径、元组、结构体和枚举变体。
+
 ## 小结
 
 - `if` 可以作为表达式产生值；
 - 分支是块，块的尾表达式决定分支结果；
 - 没有 `else` 的 `if` 适合执行动作；
 - `while` 用于条件循环；
+- `match` 用于按模式分支；
 - 循环状态通常需要 `mut`。

@@ -24,17 +24,36 @@ cargo build
 构建完成后，调试版可执行文件通常会出现在：
 
 ```text
-target/debug/riddle
+target/debug/riddlec
 ```
 
 你也可以直接运行：
 
 ```bash
-cargo run
+cargo run -p riddlec -- --help
 ```
 
-当前 `main.rs` 更像是一个编译器前端演示程序：它会解析内置的 Riddle 源码片段，构建语法树并降级到 HIR，然后打印函数体信息。
-因此，此阶段还不能把它当成稳定的 `riddlec input.rid` 命令行编译器使用。
+当前命令行入口是 `riddlec`：
+
+```bash
+riddlec [--verbose] [--backend c] [--output <file>] <file>...
+```
+
+例如，把 `examples/index.rid` 通过 C backend 编译为本机可执行文件：
+
+```bash
+cargo run -p riddlec -- --backend c examples/index.rid
+```
+
+C backend 会生成 C 代码，并调用系统中的 `cc`、`gcc` 或 `clang`。因此本机需要可用的 C 编译器和 Boehm GC（链接参数为 `-lgc`）。如果 `--output` 指向 `.c` 或 `.h` 文件，`riddlec` 只写出 C 源码，不继续编译。
+
+仓库里还有一个本地可视化工具代码 `app/info-viz`。当前根 workspace 没有把它列入 `members`，所以不能直接用 `cargo run -p info-viz` 运行；加入 workspace 或单独调整 manifest 后，它的入口参数是：
+
+```bash
+info-viz --addr 127.0.0.1:7878 examples/index.rid
+```
+
+它会启动一个 Web UI，用于查看源码编辑和 Riddle 语义消息可视化。
 
 ## 构建文档
 
@@ -64,17 +83,16 @@ mdbook serve --open
 rustup update stable
 ```
 
-### 为什么没有 `riddlec` 命令？
+### 为什么 `--backend c` 找不到 C 编译器？
 
-当前仓库的包名是 `riddle`，生成的可执行文件也叫 `riddle`。
-独立的 `riddlec` 命令行接口还没有在当前代码中稳定下来。
+请确认系统上可以直接运行 `cc --version`、`gcc --version` 或 `clang --version` 中的至少一个命令。C backend 还需要 Boehm GC；如果链接阶段提示找不到 `-lgc`，需要先安装对应开发包。
 
 ### 示例文件在哪里？
 
-仓库中有一个示例文件：
+仓库中的示例文件放在：
 
 ```text
-riddle/examples/example.rid
+riddle/examples/
 ```
 
 不过示例可能会跟随语言设计快速变化。学习 Riddle 的主要概念时，请优先阅读本书后续的“Riddle 基础”“数据与抽象”和“所有权与内存”。

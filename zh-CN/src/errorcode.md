@@ -1,6 +1,6 @@
 # Riddle 错误码参考
 
-## 类型检查 (E0001–E0011)
+## 类型检查 (E0001–E0013, E0031–E0032)
 
 ### E0001 — 类型不匹配
 赋值、函数参数、返回值的类型与预期不符。
@@ -67,6 +67,33 @@ let (x, y) = 42;  // E0010: tuple pattern cannot match value of type i32
 整数或浮点数字面量的类型后缀无效。
 ```riddle
 let x = 42_i99;  // E0011: unknown integer literal suffix `i99`
+```
+
+### E0012 — 不支持的类型转换
+`as` 转换的源类型和目标类型组合当前不支持。
+```riddle
+let p = point as bool;  // E0012: unsupported cast
+```
+
+### E0013 — 未知方法
+对某个接收者调用了不存在的固有方法。
+```riddle
+let p = Point { x: 1, y: 2 };
+p.missing();  // E0013: unknown method `missing` on type Point
+```
+
+### E0031 — 给不可变绑定赋值
+左侧绑定没有用 `mut` 声明，却被重新赋值。
+```riddle
+let x = 1;
+x = 2;  // E0031: cannot assign to immutable binding
+```
+
+### E0032 — 类型参数数量不匹配
+使用泛型结构体或枚举时，传入的类型参数数量和定义不一致。
+```riddle
+struct Box<T> { value: T }
+let b: Box<i32, bool>;  // E0032: expected 1 type argument, got 2
 ```
 
 ---
@@ -166,7 +193,7 @@ impl Foo for Point {
 
 ---
 
-## HIR 降级 (E0040)
+## HIR 降级与名字解析 (E0040, E0050–E0052)
 
 ### E0040 — 语法降级错误
 AST 到 HIR 降级过程中的语法/语义错误，如无效字面量、缺少表达式等。
@@ -175,9 +202,24 @@ let x = 99999999999999999999;  // E0040: invalid integer literal
 let y = ;                       // E0040: missing expression statement
 ```
 
+### E0050 — 未解析名字
+路径或名字无法解析到当前作用域中可见的定义。
+```riddle
+let x = missing_name;  // E0050: unresolved name
+```
+
+### E0051 — 空 use 声明
+`use` 树没有暴露出任何可导入的名字。
+
+### E0052 — glob 导入目标不存在
+`use path::*;` 的目标模块无法解析。
+```riddle
+use missing::*;  // E0052: glob import target not found
+```
+
 ---
 
-## 移动检查 (E0100)
+## 移动、逃逸和借用检查 (E0100, E0200, E0300–E0304)
 
 ### E0100 — 使用了已移动的值
 在所有权转移后再次使用该值。
@@ -185,4 +227,42 @@ let y = ;                       // E0040: missing expression statement
 let x = Point { x: 1, y: 2 };
 let y = x;    // x 的所有权转移到 y
 let z = x;    // E0100: use of moved value: `x`
+```
+
+### E0200 — 逃逸分析提示（保留）
+诊断打印器已经把 `E0200` 归类为 escape 阶段提示，但当前逃逸分析只把结果交给 MIR 降级决定 `Alloca` 或 `HeapAlloc`，不会主动向用户发出这个诊断码。
+
+### E0300 — 可变借用与已有共享借用冲突
+已有共享借用尚未结束时，不能再创建可变借用。
+```riddle
+let r = &p;
+let m = &mut p;  // E0300
+```
+
+### E0301 — 共享借用与已有可变借用冲突
+已有可变借用尚未结束时，不能再创建共享借用。
+```riddle
+let m = &mut p;
+let r = &p;  // E0301
+```
+
+### E0302 — 重复可变借用
+同一位置不能同时存在两个可变借用。
+```riddle
+let a = &mut p;
+let b = &mut p;  // E0302
+```
+
+### E0303 — 借用期间赋值
+某个位置仍被借用时，不能给它赋值。
+```riddle
+let r = &p;
+p = other;  // E0303
+```
+
+### E0304 — 借用期间移动
+某个位置仍被借用时，不能移动它。
+```riddle
+let r = &p;
+let q = p;  // E0304
 ```

@@ -51,7 +51,7 @@ fun main() {
 ```riddle
 fun main() {
     let age: i32 = 18;
-    let name: str = "Riddle";
+    let name: &str = "Riddle";
 }
 ```
 

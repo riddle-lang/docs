@@ -71,10 +71,37 @@ fun main() {
 
 引用没有逃逸时，`foo` 仍然保留在当前作用域中。
 
+## Copy 类型
+
+有些类型不会在赋值和传参时移动，而是复制。标量、引用、函数和枚举等内置类型属于 Copy 候选。
+
+用户类型可以通过实现 std 中的 lang `Copy` 进入复制语义：
+
+```riddle
+#[lang = "copy"]
+trait Copy {}
+
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+impl Copy for Point {}
+
+fun main() {
+    let p = Point { x: 1, y: 2 };
+    let q = p;
+    let r = p; // OK：Point 实现了 Copy
+}
+```
+
+实际编译时，`std/prelude.rid` 已经提供 `std::marker::Copy`，普通程序通常不需要自己声明这个 trait。只有带 `#[lang = "copy"]` 的 Copy trait 会被 move checker 识别。
+
 ## 小结
 
-- Riddle 只有移动语义；
+- Riddle 默认使用移动语义；
 - 赋值和传参会转移值；
 - 移动后原绑定不可用；
+- Copy 类型会复制而不是移动；
 - 临时访问使用引用；
 - 共享和逃逸由引用与 GC 提升机制处理。

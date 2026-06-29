@@ -45,6 +45,18 @@ arr[0] = 99;  // 需要 `mut`
 let pair: (i32, bool) = (42, true);
 ```
 
+### 原始指针 `*const T` 和 `*mut T`
+
+原始指针是低层指针类型，不参与借用检查：
+
+```riddle
+let p: *const i32;
+let q: *mut i32;
+```
+
+当前它们主要用于类型系统和后端映射，还没有像引用那样的高级安全约束。
+在文档示例里，把它们理解成“低层、显式、只看类型签名”的指针类型就够了。
+
 ### 结构体
 
 带名字段的记录类型。
@@ -59,6 +71,16 @@ let p = Point { x: 1, y: 2 };
 let x = p.x;  // 字段访问
 ```
 
+结构体可以带类型参数：
+
+```riddle
+struct Box<T> {
+    value: T,
+}
+
+let n: Box<i32> = Box { value: 1 };
+```
+
 ### 枚举
 
 带标签的联合体。变体可以是 unit、元组或结构体形式。
@@ -71,6 +93,40 @@ enum Option {
 
 let val = Option::Some(42);
 ```
+
+枚举也可以带类型参数：
+
+```riddle
+enum Maybe<T> {
+    None,
+    Some(T),
+}
+```
+
+### 泛型类型参数
+
+当前实现支持结构体、枚举和 `impl` 上的简单类型参数。类型参数使用 Rust 风格尖括号：
+
+```riddle
+struct Pair<A, B> {
+    left: A,
+    right: B,
+}
+
+let p: Pair<i32, bool> = Pair { left: 1, right: true };
+```
+
+嵌套类型参数不需要在 `>` 之间插入空格：
+
+```riddle
+let b: Box<Box<Box<i32>>> = Box {
+    value: Box {
+        value: Box { value: 1 },
+    },
+};
+```
+
+当前泛型能力偏向类型级单态化，尚未实现完整的 where 约束和 trait bound 语法。
 
 ## 引用类型 `&T` 和 `&mut T`
 
@@ -94,7 +150,7 @@ let rm: &mut i32 = &mut x; // 可变引用
 | 类型 | 指针类别 | C 表示 |
 |------|---------|-----------------|
 | `&i32` | 瘦（8 字节） | `int32_t*` |
-| `&str` | 胖（16 字节） | `struct { const char* ptr; size_t len; }` |
+| `&str` | 胖（16 字节） | 内部为 `struct { const char* ptr; size_t len; }`，传给外部 C 函数时为 `const char*` |
 
 ## 定长与不定长类型
 
@@ -126,5 +182,26 @@ let s: &str = "hello";    // 正确: &str 是胖指针
 | `char` | `char` |
 | `()` | `void` |
 | `&T`（定长） | `T*` |
-| `&str` | `struct { const char* ptr; size_t len; }` |
-| `str` | `struct { const char* ptr; size_t len; }` |
+| `*const T` | `T*` |
+| `*mut T` | `T*` |
+| `&str`（Riddle 内部） | `struct { const char* ptr; size_t len; }` |
+| `str`（Riddle 内部） | `struct { const char* ptr; size_t len; }` |
+| `str` / `&str`（外部 C 函数参数） | `const char*` |
+
+## 属性
+
+Riddle 支持 Rust 风格外部属性：
+
+```riddle
+#[note]
+struct Item {
+    #[field]
+    value: i32,
+}
+
+fun id(#[param] value: #[ty] i32) -> i32 {
+    #[expr] value
+}
+```
+
+普通属性会保留在 AST/HIR 中。当前编译器识别 `#[lang = "..."]`，用于把标准库中的特殊 trait 标记为内置项。
