@@ -128,6 +128,16 @@ let b: Box<Box<Box<i32>>> = Box {
 
 当前泛型能力偏向类型级单态化，尚未实现完整的 where 约束和 trait bound 语法。
 
+函数也可以带简单类型参数，调用时由实参类型推断：
+
+```riddle
+fun id<T>(value: T) -> T {
+    value
+}
+
+let n = id(1);
+```
+
 ## 引用类型 `&T` 和 `&mut T`
 
 引用指向一个值而不获取所有权。
