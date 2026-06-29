@@ -104,7 +104,9 @@ arg_list = (expression ("," expression)*)?;
 
 primary = literal | path | array_expr | "(" expression? ")";
 
-array_expr = "[" (expression ("," expression)* ","?)? "]";
+array_expr = "[" "]"
+           | "[" expression ("," expression)* ","? "]"
+           | "[" expression ";" expression "]";
 
 struct_expr = path struct_expr_fields;
 struct_expr_fields = "{" (struct_expr_field ("," struct_expr_field)* ","?)? "}";
@@ -150,7 +152,7 @@ ty = attribute* (
      path type_args?
    | "&" "mut"? ty
    | "*" ("const" | "mut") ty
-   | "[" ty ";" expression? "]"
+   | "[" ty ";" expression "]"
    | "(" (ty ("," ty)* ","?)? ")"
    );
 

@@ -74,6 +74,31 @@ fun abs(x: i32) -> i32 {
 
 `return` 更适合错误分支、提前退出或复杂控制流。普通计算则可以交给尾表达式。
 
+## 泛型函数
+
+函数可以带类型参数，让同一份逻辑适用于多种类型：
+
+```riddle
+fun id<T>(value: T) -> T {
+    value
+}
+
+fun main() {
+    let n = id(1);       // T 推断为 i32
+    let b = id(true);    // T 推断为 bool
+}
+```
+
+多个类型参数用逗号分隔：
+
+```riddle
+fun pair<A, B>(first: A, second: B) -> (A, B) {
+    (first, second)
+}
+```
+
+泛型函数在 C backend 中会按实际调用生成单态化版本。当前泛型只支持简单类型参数，尚未实现 where 约束和 trait bound。
+
 ## 函数声明
 
 有些函数可能只声明签名，具体实现由外部提供：
@@ -90,4 +115,6 @@ fun print(value: i32);
 - 参数必须写类型；
 - 返回类型写在 `->` 后面；
 - 函数体尾表达式可以作为返回值；
-- `return` 用于提前返回。
+- `return` 用于提前返回；
+- 函数可以带类型参数 `<T>`，C backend 会单态化；
+- 当前泛型不支持 where 约束和 trait bound。

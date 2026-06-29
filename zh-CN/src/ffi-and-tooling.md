@@ -89,23 +89,56 @@ fun main() {
 
 当前 `unsafe` 主要是语法和语义边界；原始指针不参与普通引用那套借用检查。
 
-## info-viz
+## riddle-lsp
 
-仓库还包含 `app/info-viz`，用于本地查看 Riddle 源码的语义消息可视化。它的 CLI 入口设计为：
+`riddle-lsp` 是 Riddle 的 Language Server Protocol 实现，基于 `tower-lsp`。它为编辑器提供实时诊断：
 
 ```bash
-info-viz [--addr 127.0.0.1:7878] [source.rid]
+cargo run -p riddle-lsp
 ```
 
-当前根 `Cargo.toml` 没有把 `app/info-viz` 列入 `workspace.members`，直接 `cargo run -p info-viz` 不可用。需要先把它加入 workspace 或单独调整 manifest 后再构建运行。
+它通过 stdin/stdout 与编辑器通信，每次按键运行完整编译流程（解析 → HIR 降级 → 作用域图 → 类型检查 → 逃逸分析 → move check），然后通过 LSP 推送诊断：
 
-如果不传源文件，它会打开内置示例。支持参数：
+- **解析错误**：来自词法/语法分析阶段；
+- **HIR 诊断**：包括 E0040（降级错误）、E0050/E0051/E0052（名字解析错误）；
+- **类型检查诊断**：E0001–E0034、E0072 等类型和 trait 检查错误；
+- **分析诊断**：E0100 移动语义、E0300–E0304 借用冲突。
 
-| 参数 | 作用 |
-|------|------|
-| `--addr <addr>` | 指定监听地址，默认 `127.0.0.1:7878` |
-| `--version`, `-V` | 打印构建时 git commit hash |
-| `--help`, `-h` | 打印帮助 |
+诊断附带：
+- 次要标签（related information）指向关联位置；
+- 注释（notes）提供上下文；
+- 帮助消息（help）提供修复建议；
+- 严重性分层：Error、Warning、Information、Hint。
+
+配置编辑器（以 VS Code 为例），在 LSP 客户端配置中添加：
+
+```json
+{
+    "languageServers": ["riddle-lsp"]
+}
+```
+
+或将 `riddle-lsp` 注册为 `.rid` 文件的 language server。
+
+## MIR 后端架构
+
+MIR 后端通过统一的 `Backend` trait 实现：
+
+```rust
+trait Backend {
+    fn compile(&mut self, module: &Module) -> Result<String, Error>;
+    fn name(&self) -> &'static str;
+}
+```
+
+目前已实现的四个后端：
+
+| 后端 | 文件 | 状态 |
+|------|------|------|
+| C | `crates/mir/src/backend/c.rs` | CLI 可用（`--backend c`） |
+| Cranelift | `crates/mir/src/backend/cranelift.rs` | 代码和测试齐全，CLI 未暴露 |
+| JavaScript | `crates/mir/src/backend/js.rs` | 代码和测试齐全，CLI 未暴露 |
+| Lua | `crates/mir/src/backend/lua.rs` | 代码和测试齐全，CLI 未暴露 |
 
 ## 小结
 
@@ -113,4 +146,5 @@ info-viz [--addr 127.0.0.1:7878] [source.rid]
 - C backend 依赖本机 C 编译器和 Boehm GC；
 - `extern "C"` 支持声明外部函数和导出函数；
 - `unsafe`、原始指针和 `as` 已进入当前语言；
-- `info-viz` 是本地语义消息可视化工具代码，当前未接入根 workspace。
+- `riddle-lsp` 提供编辑器实时诊断；
+- MIR 支持四种后端（C / Cranelift / JS / Lua），通过统一 `Backend` trait 实现。

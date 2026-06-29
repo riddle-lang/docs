@@ -103,6 +103,17 @@ impl Show for Widget {
 
 编译器会检查 trait 要求的方法和关联类型是否完整、签名是否匹配。
 
+## 常量和类型别名
+
+`impl` 块中还可以定义关联常量和关联类型别名：
+
+```riddle
+impl Point {
+    const ORIGIN: Point = Point { x: 0, y: 0 };
+    type Pair = (i32, i32);
+}
+```
+
 ## 小结
 
 - `impl Type` 定义固有函数和方法；
@@ -110,4 +121,5 @@ impl Show for Widget {
 - `value.method(...)` 调用带接收者的方法；
 - `impl<T> Type<T>` 支持泛型 impl；
 - `impl Trait for Type` 为类型实现 trait；
-- trait impl 会检查方法签名和关联类型。
+- trait impl 会检查方法签名和关联类型；
+- `impl` 块内也可以定义关联常量（`const`）和关联类型别名（`type`）。

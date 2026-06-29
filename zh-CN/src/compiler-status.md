@@ -6,15 +6,15 @@ Riddle 仍处于开发阶段。本页记录当前仓库已经实现并被测试�
 
 `riddlec` 当前执行完整前端和基础后端流程：
 
-1. 词法分析和语法分析；
+1. 增量词法分析和语法分析（`IncrementalParser`，缓存 token 以支持 LSP 重新解析）；
 2. AST 包装；
-3. HIR 降级；
-4. 作用域图构建和名字解析；
-5. 类型检查；
-6. 逃逸分析；
-7. move checker；
-8. HIR 到 MIR 降级；
-9. C backend 代码生成。
+3. HIR 降级（含 E0040/E0050/E0051/E0052 诊断）；
+4. 作用域图构建和名字解析（基于片段的增量作用域图，支持部分失效）；
+5. 类型检查（含增量缓存 `TypeCheckCache`）；
+6. 逃逸分析（过程间不动点，决定局部值用栈分配还是 GC 堆分配）；
+7. move checker（移动后使用、借用冲突、借用期间赋值/移动检查）；
+8. HIR 到 MIR 降级（SSA 形式，Phi 节点，基本块，`Alloca`/`HeapAlloc` 分配指令）；
+9. 后端代码生成（C / Cranelift / JS / Lua）。
 
 命令行入口支持：
 
@@ -24,13 +24,34 @@ riddlec [--verbose] [--backend c] [--output <file>] <file>...
 
 `--backend c` 会生成 C 代码，并调用本机 `cc`、`gcc` 或 `clang` 编译成可执行文件。运行 C backend 需要系统上可用的 C 编译器和 Boehm GC（链接参数为 `-lgc`）。
 
-仓库还包含 `app/info-viz` 工具代码：
+`riddlec` 会自动把 `std/prelude.rid` 拼到用户源码后面，因此基础 lang trait（`Copy`、`Clone`、`Debug` 等）不需要手动引入。
 
-```bash
-info-viz [--addr 127.0.0.1:7878] [source.rid]
-```
+### MIR 中间表示
 
-它用于启动本地 Web UI，查看源码编辑和语义消息可视化。当前根 workspace 没有把 `app/info-viz` 列入 `members`，因此需要先把它加入 workspace 或单独调整 manifest 后再构建运行。详见 [FFI 与工具链](./ffi-and-tooling.md)。
+MIR（Mid-level IR）是 SSA 形式的中间表示，位于类型检查和代码生成之间：
+
+- **SSA 基本块**：每个函数体由基本块组成，块以 `Terminator`（`Branch`、`CondBranch`、`Return`）结束；
+- **Phi 节点**：`InstKind::Phi` 合并来自多个前驱块的值；
+- **分配指令**：`Alloca`（栈分配）和 `HeapAlloc`（GC 堆分配），由逃逸分析结果驱动；
+- **内存操作**：`Load`、`Store`、`FieldPtr`（字段指针）、`IndexPtr`（索引指针）、`ExtractValue`（提取聚合字段）；
+- **值构造**：`StructValue`、`ArrayValue`、`TupleValue`；
+- **类型转换**：`IntToInt`、`IntToFloat`、`FloatToInt`、`FloatToFloat`、`BoolToInt`、`IntToBool`；
+- **比较操作**：`Cmp` 支持 `Eq`、`Neq`、`Lt`、`Gt`、`LtEq`、`GtEq`。
+
+MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`、`Str`、`Never`、`Void`，并支持 `size_bytes()` 计算类型大小（区分瘦指针和胖指针）。
+
+### riddle-lsp
+
+仓库包含 `app/riddle-lsp`，一个基于 `tower-lsp` 的 Language Server Protocol 实现：
+
+- 完整的诊断流水线：解析错误、HIR 诊断、类型检查错误、move/escape 分析诊断全部通过 LSP 推送；
+- 全文本同步（`TextDocumentSyncKind::FULL`）；
+- UTF-16 位置编码（正确处理多字节字符如 emoji）；
+- 诊断附带次要标签（related information）、注释（notes）和帮助消息（help）；
+- 诊断严重性层级：Error、Warning、Information、Hint；
+- 每次按键都运行完整编译流程；
+
+编辑器配置示例见 [FFI 与工具链](./ffi-and-tooling.md)。
 
 ## 当前语言特性
 
@@ -49,18 +70,19 @@ info-viz [--addr 127.0.0.1:7878] [source.rid]
 - `let` 绑定，默认不可变；
 - `let mut` 可变绑定；
 - 显式类型标注；
-- 顶层和 `impl` 内的 `const` 声明；
-- 顶层和 `impl` 内的 `type` 别名；
+- 顶层和 `impl` 内的 `const` 声明（`const NAME: Type = value;`）；
+- 顶层、`impl` 和 `trait` 内的 `type` 别名（含默认关联类型）；
 - 先声明后赋值；
 - 函数定义和函数声明；
-- 简单泛型函数；
+- 泛型函数（类型参数从实参推断，C backend 单态化）；
 - 函数参数、返回类型、尾表达式和 `return`；
 - 块表达式；
 - 字段访问、函数调用、方法调用；
 - 数组字面量、数组索引；
 - 结构体字面量和字段简写；
 - 类型转换表达式 `expr as Type`；
-- `unsafe { ... }` 块语法。
+- `unsafe { ... }` 块语法；
+- 解引用 `*expr`。
 
 ### 运算符
 
@@ -119,11 +141,22 @@ info-viz [--addr 127.0.0.1:7878] [source.rid]
 
 ### 属性和标准库内置项
 
-Riddle 支持 Rust 风格外部属性：
+Riddle 支持 Rust 风格外部属性，可放置在多项位置：
 
 ```riddle
-#[name]
-#[name = "value"]
+#[item]
+struct Item {
+    #[field]
+    value: i32,
+}
+
+fun id(#[param] value: #[ty] i32) -> i32 {
+    #[expr] value
+}
+
+match value {
+    #[arm] Pattern => result,
+}
 ```
 
 属性当前会进入 AST/HIR。编译器识别 `#[lang = "..."]`，用于把 std 中的 trait 标记为编译器内置项。
@@ -167,23 +200,29 @@ Riddle 支持 Rust 风格外部属性：
 
 | 后端 | 状态 |
 |------|------|
-| C backend | CLI 可用：`--backend c` |
-| Cranelift / JS / Lua | 仓库中保留早期后端代码或测试文件，但当前 `riddlec` 命令行不暴露 |
+| C backend | CLI 可用：`--backend c`。生成 C 代码后用本机 CC 编译，需要 Boehm GC |
+| Cranelift backend | 仓库中有完整代码和测试（`tests/mir/backend_cranelift.rs`），SSA 形式原生代码生成，当前 CLI 未暴露 |
+| JS backend | 仓库中有完整代码和测试（`tests/mir/backend_js.rs`），生成 JavaScript 代码，当前 CLI 未暴露 |
+| Lua backend | 仓库中有完整代码和测试（`tests/mir/backend_lua.rs`），生成 Lua 代码，当前 CLI 未暴露 |
+
+所有后端通过统一的 `Backend` trait 实现：`compile(&mut self, module: &Module) -> Result<String, Error>`。
 
 ## 工具状态
 
 | 工具 | 状态 |
 |------|------|
 | `riddlec` | 编译器 CLI，支持前端检查、MIR 降级和 C backend |
-| `info-viz` | 工具代码已在 `app/info-viz`，当前未接入根 workspace |
+| `riddle-lsp` | LSP 服务器，基于 `tower-lsp`，每次按键运行完整编译流程，推送解析/类型/move 诊断 |
 
 ## 当前限制
 
 - 标准库 trait 多数只是 lang 标记和基础 impl，占位多于运行时能力；
 - 操作符还没有真正通过 trait 分派；
-- 泛型目前偏向类型级单态化，尚未覆盖完整 Rust 泛型能力；
+- 泛型目前偏向类型级单态化，尚未覆盖完整 Rust 泛型能力（如 where 约束、trait bound）；
 - `where` 已是关键字，但约束语法和语义尚未实现；
 - `pub` 已是关键字，但可见性规则尚未作为完整语义实现；
-- `for` 已用于 `impl Trait for Type`，还没有独立循环语句；
+- `for` 已用于 `impl Trait for Type`，还没有独立循环语句（`for ... in ...`）；
 - C backend 需要外部 C 编译器和 Boehm GC；
+- Cranelift / JS / Lua 后端代码和测试齐全，但 CLI 尚未暴露切换入口；
+- 逃逸分析当前粒度是整个局部变量，不做字段级拆分；
 - 这是开发中工具链，不保证语法和 ABI 稳定。

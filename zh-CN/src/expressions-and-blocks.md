@@ -87,6 +87,7 @@ fun main() {
 ```riddle
 fun first() -> i32 {
     let values: [i32; 3] = [1, 2, 3];
+    let zeros: [i32; 3] = [0; 3];
     values[0]
 }
 ```

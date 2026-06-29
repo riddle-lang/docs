@@ -1,6 +1,6 @@
 # Riddle 错误码参考
 
-## 类型检查 (E0001–E0013, E0031–E0032)
+## 类型检查 (E0001–E0013, E0031–E0034, E0072)
 
 ### E0001 — 类型不匹配
 赋值、函数参数、返回值的类型与预期不符。
@@ -94,6 +94,34 @@ x = 2;  // E0031: cannot assign to immutable binding
 ```riddle
 struct Box<T> { value: T }
 let b: Box<i32, bool>;  // E0032: expected 1 type argument, got 2
+```
+
+### E0033 — 递归泛型调用
+泛型函数递归调用时，类型参数必须一致；嵌套包装会导致无限实例化。
+```riddle
+fun wrap<T>(value: T) -> T {
+    wrap(Box { value })  // E0033: recursive generic call with different type args
+}
+```
+
+### E0034 — 无效类型标注
+变量或参数的类型标注无法解析或格式不正确。
+```riddle
+let x: InvalidType = 1;  // E0034: invalid type annotation
+```
+
+### E0072 — 递归类型无限大小
+结构体或枚举的字段中包含自身，导致类型大小无法在编译期确定。
+```riddle
+struct Node {
+    next: Node,  // E0072: recursive type has infinite size
+}
+```
+修复建议：使用 `&`、`*const` 或 `*mut` 间接引用打破循环。
+```riddle
+struct Node {
+    next: &Node,  // OK：引用是定长的
+}
 ```
 
 ---
@@ -266,3 +294,13 @@ p = other;  // E0303
 let r = &p;
 let q = p;  // E0304
 ```
+
+---
+
+## 泛型与类型 (E0033, E0072)
+
+### E0033 — 递归泛型调用
+泛型函数递归调用自身时，如果实际类型参数与定义不同（例如被包装进另一个泛型），会导致编译器无限单态化。
+
+### E0072 — 递归类型具有无限大小
+结构体或枚举直接或间接包含自身，没有任何间接层（引用、指针等），导致编译期无法计算类型大小。插入 `&`、`*const` 或 `*mut` 打破循环即可修复。
