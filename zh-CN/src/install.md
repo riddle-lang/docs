@@ -47,14 +47,6 @@ cargo run -p riddlec -- --backend c examples/index.rid
 
 C backend 会生成 C 代码，并调用系统中的 `cc`、`gcc` 或 `clang`。因此本机需要可用的 C 编译器和 Boehm GC（链接参数为 `-lgc`）。如果 `--output` 指向 `.c` 或 `.h` 文件，`riddlec` 只写出 C 源码，不继续编译。
 
-仓库里还有一个本地可视化工具代码 `app/info-viz`。当前根 workspace 没有把它列入 `members`，所以不能直接用 `cargo run -p info-viz` 运行；加入 workspace 或单独调整 manifest 后，它的入口参数是：
-
-```bash
-info-viz --addr 127.0.0.1:7878 examples/index.rid
-```
-
-它会启动一个 Web UI，用于查看源码编辑和 Riddle 语义消息可视化。
-
 ## 构建文档
 
 本文档使用 `mdBook` 编写。如果你想在本地预览文档，可以安装 mdBook：
