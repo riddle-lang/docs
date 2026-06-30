@@ -213,6 +213,7 @@ match value {
 |------|------|
 | `riddlec` | 编译器 CLI，支持前端检查、MIR 降级和 C backend |
 | `riddle-lsp` | LSP 服务器，基于 `tower-lsp`，每次按键运行完整编译流程，推送解析/类型/move 诊断 |
+| `clue` | 项目构建器，支持 `init` 和 `build`，会展开外部模块并输出 `.clue/build/<package>.c` |
 
 ## 当前限制
 

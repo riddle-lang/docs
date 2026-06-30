@@ -20,6 +20,8 @@
 - [所有权与内存](./ownership-and-memory.md)
   - [移动语义](./move-semantics.md)
   - [引用与逃逸](./references-and-escape.md)
+- [Clue 构建器](./clue.md)
+  - [创建项目](./clue-create.md)
 - [附录](./appendices.md)
   - [FFI 与工具链](./ffi-and-tooling.md)
   - [当前工具链状态](./compiler-status.md)
