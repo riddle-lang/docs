@@ -95,7 +95,7 @@ fun main() {
 }
 ```
 
-实际编译时，`std/prelude.rid` 已经提供 `std::marker::Copy`，普通程序通常不需要自己声明这个 trait。只有带 `#[lang = "copy"]` 的 Copy trait 会被 move checker 识别。
+实际编译时，`std/lib.rid` 已经提供 `std::marker::Copy`，普通程序通常不需要自己声明这个 trait。只有带 `#[lang = "copy"]` 的 Copy trait 会被 move checker 识别。
 
 ## 小结
 

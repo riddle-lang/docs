@@ -20,14 +20,14 @@ riddlec [--verbose] [--backend c] [--output <file>] <file>...
 | `--version`, `-V` | 打印构建时 git commit hash |
 | `--help`, `-h` | 打印帮助 |
 
-`riddlec` 会自动把 `std/prelude.rid` 拼到用户源码后面，因此基础 lang trait 不需要手动引入。
+`riddlec` 会自动把 `std/lib.rid` 拼到用户源码后面，因此基础 lang trait 不需要手动引入。
 
 ## C backend
 
 使用 C backend：
 
 ```bash
-cargo run -p riddlec -- --backend c examples/index.rid
+cargo run -p riddlec -- --backend c examples/basics/arrays_and_associated_types.rid
 ```
 
 `riddlec` 会生成 C 代码，然后查找 `cc`、`gcc` 或 `clang` 编译成本机可执行文件。C backend 需要系统中有 C 编译器和 Boehm GC，链接参数为 `-lgc`。

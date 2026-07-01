@@ -24,7 +24,7 @@ riddlec [--verbose] [--backend c] [--output <file>] <file>...
 
 `--backend c` 会生成 C 代码，并调用本机 `cc`、`gcc` 或 `clang` 编译成可执行文件。运行 C backend 需要系统上可用的 C 编译器和 Boehm GC（链接参数为 `-lgc`）。
 
-`riddlec` 会自动把 `std/prelude.rid` 拼到用户源码后面，因此基础 lang trait（`Copy`、`Clone`、`Debug` 等）不需要手动引入。
+`riddlec` 会自动把 `std/lib.rid` 拼到用户源码后面，因此基础 lang trait（`Copy`、`Clone`、`Debug` 等）不需要手动引入。
 
 ### MIR 中间表示
 
@@ -47,6 +47,7 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - 完整的诊断流水线：解析错误、HIR 诊断、类型检查错误、move/escape 分析诊断全部通过 LSP 推送；
 - 全文本同步（`TextDocumentSyncKind::FULL`）；
 - UTF-16 位置编码（正确处理多字节字符如 emoji）；
+- 语义 Token（`textDocument/semanticTokens/full`），包含词法高亮和 HIR 局部变量 `declaration` / `mutable` 标记；
 - 诊断附带次要标签（related information）、注释（notes）和帮助消息（help）；
 - 诊断严重性层级：Error、Warning、Information、Hint；
 - 每次按键都运行完整编译流程；
@@ -62,6 +63,8 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - `use path;`、`use path as alias;`；
 - `use path::*;`；
 - `use path::{a, b as c};`；
+- `pub` 可见性，模块路径只导出 public 项；
+- `pub use` 重新导出；
 - `self`、`super`、`crate` 和 `::root` 风格路径；
 - 局部变量、参数、模块项、结构体、枚举变体、函数和 impl 方法的解析。
 
@@ -74,7 +77,7 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - 顶层、`impl` 和 `trait` 内的 `type` 别名（含默认关联类型）；
 - 先声明后赋值；
 - 函数定义和函数声明；
-- 泛型函数（类型参数从实参推断，C backend 单态化）；
+- 泛型函数（类型参数从实参推断，支持 `<T: Trait>` bound，C backend 单态化）；
 - 函数参数、返回类型、尾表达式和 `return`；
 - 块表达式；
 - 字段访问、函数调用、方法调用；
@@ -161,7 +164,7 @@ match value {
 
 属性当前会进入 AST/HIR。编译器识别 `#[lang = "..."]`，用于把 std 中的 trait 标记为编译器内置项。
 
-当前 `std/prelude.rid` 会自动拼到用户源码后面，里面定义了：
+当前 `std/lib.rid` 会自动拼到用户源码后面，里面定义了：
 
 - `std::marker::Copy`；
 - `std::clone::Clone`；
@@ -212,16 +215,16 @@ match value {
 | 工具 | 状态 |
 |------|------|
 | `riddlec` | 编译器 CLI，支持前端检查、MIR 降级和 C backend |
-| `riddle-lsp` | LSP 服务器，基于 `tower-lsp`，每次按键运行完整编译流程，推送解析/类型/move 诊断 |
-| `clue` | 项目构建器，支持 `init` 和 `build`，会展开外部模块并输出 `.clue/build/<package>.c` |
+| `riddle-lsp` | LSP 服务器，基于 `tower-lsp`，每次按键运行完整编译流程，推送解析/类型/move 诊断，并提供语义 Token |
+| `clue` | 项目构建器，支持 `init` 和 `build`，会展开外部模块、解析本地 path 依赖，并输出 `.clue/build/<package>.c` |
 
 ## 当前限制
 
 - 标准库 trait 多数只是 lang 标记和基础 impl，占位多于运行时能力；
 - 操作符还没有真正通过 trait 分派；
-- 泛型目前偏向类型级单态化，尚未覆盖完整 Rust 泛型能力（如 where 约束、trait bound）；
+- 泛型目前偏向类型级单态化，尚未覆盖完整 Rust 泛型能力（如 where 约束）；
 - `where` 已是关键字，但约束语法和语义尚未实现；
-- `pub` 已是关键字，但可见性规则尚未作为完整语义实现；
+- 字段级可见性尚未做类型检查约束；
 - `for` 已用于 `impl Trait for Type`，还没有独立循环语句（`for ... in ...`）；
 - C backend 需要外部 C 编译器和 Boehm GC；
 - Cranelift / JS / Lua 后端代码和测试齐全，但 CLI 尚未暴露切换入口；

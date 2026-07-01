@@ -97,7 +97,17 @@ fun pair<A, B>(first: A, second: B) -> (A, B) {
 }
 ```
 
-泛型函数在 C backend 中会按实际调用生成单态化版本。当前泛型只支持简单类型参数，尚未实现 where 约束和 trait bound。
+类型参数可以带 trait bound：
+
+```riddle
+fun copy_id<T: Copy>(value: T) -> T {
+    value
+}
+```
+
+多个 bound 用 `+` 连接，例如 `<T: Named + Tagged>`。
+
+调用泛型函数时，编译器会检查推断出的实参类型是否满足 bound；函数体内可以通过 bound 调用 trait 方法，C backend 会在单态化后静态分派到具体 impl。当前还没有实现 `where` 约束语法。
 
 ## 函数声明
 
@@ -117,4 +127,4 @@ fun print(value: i32);
 - 函数体尾表达式可以作为返回值；
 - `return` 用于提前返回；
 - 函数可以带类型参数 `<T>`，C backend 会单态化；
-- 当前泛型不支持 where 约束和 trait bound。
+- 泛型函数支持 `<T: Trait>` 和 `<T: A + B>` bound，并可在函数体内调用 bound 提供的 trait 方法；当前还不支持 `where` 约束。

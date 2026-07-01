@@ -18,16 +18,16 @@ cargo --version
 ```bash
 git clone https://github.com/riddle-lang/riddle --depth=1
 cd riddle
-cargo build
+cargo install --path . --features install-bins --force --target-dir "${TMPDIR:-/tmp}/riddle-install"
 ```
 
-构建完成后，调试版可执行文件通常会出现在：
+这会一次安装 `clue`、`riddle-lsp` 和 `riddlec`。在 PowerShell 中也可以写成：
 
-```text
-target/debug/riddlec
+```powershell
+cargo install --path . --features install-bins --force --target-dir "$env:TEMP\riddle-install"
 ```
 
-你也可以直接运行：
+如果只想在源码目录中临时运行，也可以使用：
 
 ```bash
 cargo run -p riddlec -- --help
@@ -39,10 +39,10 @@ cargo run -p riddlec -- --help
 riddlec [--verbose] [--backend c] [--output <file>] <file>...
 ```
 
-例如，把 `examples/index.rid` 通过 C backend 编译为本机可执行文件：
+例如，把 `examples/basics/arrays_and_associated_types.rid` 通过 C backend 编译为本机可执行文件：
 
 ```bash
-cargo run -p riddlec -- --backend c examples/index.rid
+cargo run -p riddlec -- --backend c examples/basics/arrays_and_associated_types.rid
 ```
 
 C backend 会生成 C 代码，并调用系统中的 `cc`、`gcc` 或 `clang`。因此本机需要可用的 C 编译器和 Boehm GC（链接参数为 `-lgc`）。如果 `--output` 指向 `.c` 或 `.h` 文件，`riddlec` 只写出 C 源码，不继续编译。
@@ -86,5 +86,7 @@ rustup update stable
 ```text
 riddle/examples/
 ```
+
+目录按用途分组：`basics/` 是基础语法和类型示例，`traits/` 是 trait/impl 示例，`ownership/` 是引用和可变性示例，`ffi/` 是 C FFI 示例，`regressions/` 是编译器回归用例。
 
 不过示例可能会跟随语言设计快速变化。学习 Riddle 的主要概念时，请优先阅读本书后续的“Riddle 基础”“数据与抽象”和“所有权与内存”。

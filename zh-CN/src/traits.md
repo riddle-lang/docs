@@ -56,7 +56,7 @@ impl Iterator for Counter {
 
 ## 内置 Trait
 
-Riddle 的 `std/prelude.rid` 会自动拼到用户源码后面。标准库中用 Rust 风格属性 `#[lang = "..."]` 标记编译器需要识别的特殊 trait。
+Riddle 的 `std/lib.rid` 会自动拼到用户源码后面。标准库中用 Rust 风格属性 `#[lang = "..."]` 标记编译器需要识别的特殊 trait。
 
 ### Copy
 
