@@ -1,6 +1,6 @@
 # 控制流
 
-控制流决定程序在不同条件下执行哪些代码。Riddle 提供 `if`、`while` 和 `match`。
+控制流决定程序在不同条件下执行哪些代码。Riddle 提供 `if`、`while`、`for` 和 `match`。
 
 ## if 表达式
 
@@ -69,20 +69,38 @@ fun count_to_three() {
 
 循环中经常会用到 `mut`，因为循环变量需要更新。
 
+## for 循环
+
+`for` 使用 `IntoIterator` / `Iterator` 协议遍历值：
+
+```riddle
+fun sum_to_three() -> i32 {
+    let mut sum = 0;
+
+    for item in range(0, 3) {
+        sum += item;
+    }
+
+    sum
+}
+```
+
+当前可执行后端先支持标准库 `Range`，也就是 `range(start, end)` 产生的半开区间。
+
 ## match 表达式
 
 `match` 根据值的形状选择分支：
 
 ```riddle
-enum Maybe {
+enum Option {
     None,
     Some(i32),
 }
 
-fun unwrap_or_zero(value: Maybe) -> i32 {
+fun unwrap_or_zero(value: Option) -> i32 {
     match value {
-        Maybe::Some(n) => n,
-        Maybe::None => 0,
+        Option::Some(n) => n,
+        Option::None => 0,
     }
 }
 ```
@@ -107,5 +125,6 @@ fun classify(n: i32) -> i32 {
 - 分支是块，块的尾表达式决定分支结果；
 - 没有 `else` 的 `if` 适合执行动作；
 - `while` 用于条件循环；
+- `for` 用于遍历实现 `IntoIterator` 的值；
 - `match` 用于按模式分支；
 - 循环状态通常需要 `mut`。

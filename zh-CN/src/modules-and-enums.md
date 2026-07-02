@@ -136,7 +136,7 @@ enum Message {
 枚举可以带类型参数：
 
 ```riddle
-enum Maybe<T> {
+enum Option<T> {
     None,
     Some(T),
 }
@@ -145,10 +145,10 @@ enum Maybe<T> {
 当前类型系统能识别枚举类型和变体路径，`match` 可以使用枚举变体模式：
 
 ```riddle
-fun unwrap_or_zero(value: Maybe<i32>) -> i32 {
+fun unwrap_or_zero(value: Option<i32>) -> i32 {
     match value {
-        Maybe::Some(n) => n,
-        Maybe::None => 0,
+        Option::Some(n) => n,
+        Option::None => 0,
     }
 }
 ```

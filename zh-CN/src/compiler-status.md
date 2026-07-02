@@ -101,6 +101,7 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 
 - `if` / `else if` / `else` 表达式；
 - `while` 循环；
+- `for item in iterable` 循环，按 `IntoIterator` / `Iterator` 做类型检查；
 - `match` 表达式；
 - `match` guard；
 - `_` 通配模式；
@@ -123,6 +124,7 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - 固定长度数组 `[T; N]`；
 - 结构体；
 - 枚举；
+- 标准库 `Option<T>`；
 - 函数类型；
 - 泛型函数、泛型结构体、泛型枚举、泛型 impl；
 - 类型参数实例化；
@@ -141,6 +143,7 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - `Type::Assoc` 关联类型路径；
 - trait impl 合约检查：缺少方法、参数类型、返回类型和缺少关联类型会报错；
 - 泛型 trait impl 模式匹配，例如 `impl<T> Copy for Box<T>`。
+- 标准库 `Iterator` / `IntoIterator` 协议，含 `Range`、`range(start, end)` 和 `for` 遍历。
 
 ### 属性和标准库内置项
 
@@ -166,6 +169,8 @@ match value {
 
 当前 `std/lib.rid` 会自动拼到用户源码后面，里面定义了：
 
+- `Option<T>`；
+- `Iterator`、`IntoIterator`、`Range` 和 `range(start, end)`；
 - `std::marker::Copy`；
 - `std::clone::Clone`；
 - `std::default::Default`；
@@ -222,10 +227,10 @@ match value {
 
 - 标准库 trait 多数只是 lang 标记和基础 impl，占位多于运行时能力；
 - 操作符还没有真正通过 trait 分派；
+- `for` 的类型检查走 `IntoIterator` / `Iterator`，MIR 后端当前只把标准库 `Range` 降成真实循环；
 - 泛型目前偏向类型级单态化，尚未覆盖完整 Rust 泛型能力（如 where 约束）；
 - `where` 已是关键字，但约束语法和语义尚未实现；
 - 字段级可见性尚未做类型检查约束；
-- `for` 已用于 `impl Trait for Type`，还没有独立循环语句（`for ... in ...`）；
 - C backend 需要外部 C 编译器和 Boehm GC；
 - Cranelift / JS / Lua 后端代码和测试齐全，但 CLI 尚未暴露切换入口；
 - 逃逸分析当前粒度是整个局部变量，不做字段级拆分；

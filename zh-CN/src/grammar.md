@@ -83,11 +83,13 @@ expr_stmt = expr_without_block ";" | expr_with_block ";"?;
 
 expression = expr_with_block | expr_without_block;
 
-expr_with_block = block | if_expr | while_expr | match_expr | unsafe_expr;
+expr_with_block = block | if_expr | while_expr | for_expr | match_expr | unsafe_expr;
 
 if_expr = "if" expression block ("else" (if_expr | block))?;
 
 while_expr = "while" expression block;
+
+for_expr = "for" ident "in" expression block;
 
 match_expr = "match" expression "{" match_arm ("," match_arm)* ","? "}";
 match_arm = attribute* pattern ("if" expression)? "=>" expression;
@@ -140,7 +142,7 @@ enum_pattern = path | path "(" (pattern ("," pattern)* ","?)? ")" | path "{" (fi
 //   &&             left-assoc        (lbp=4,  rbp=5)
 //   ||             left-assoc        (lbp=2,  rbp=3)
 //
-// In `if`, `while`, and `match` heads, struct expressions are disabled so
+// In `if`, `while`, `for`, and `match` heads, struct expressions are disabled so
 // `if Foo { ... }` keeps parsing `{ ... }` as the control-flow block.
 
 // == path / type ==

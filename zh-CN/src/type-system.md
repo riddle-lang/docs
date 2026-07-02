@@ -109,7 +109,7 @@ let val = Option::Some(42);
 枚举也可以带类型参数：
 
 ```riddle
-enum Maybe<T> {
+enum Option<T> {
     None,
     Some(T),
 }

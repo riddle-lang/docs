@@ -3,7 +3,7 @@
 `clue` 是 Riddle 当前的项目构建器。它提供两个命令：
 
 ```bash
-clue init <path>
+clue init [--bin|--lib] <path>
 clue build [path]
 ```
 

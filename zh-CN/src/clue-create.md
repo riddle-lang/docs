@@ -8,6 +8,8 @@
 clue init hello
 ```
 
+`--bin` 是默认值，也可以用 `clue init --lib math` 创建库包清单。
+
 这会创建 `hello/Clue.toml` 和 `hello/.gitignore`。`Clue.toml` 的初始内容如下：
 
 ```toml
@@ -20,7 +22,7 @@ version = "0.1.0"
 
 `.gitignore` 会忽略 `/.clue`，也就是 Clue 的构建缓存和输出目录。
 
-`clue init` 不会自动创建入口源码。通常需要手动添加：
+`clue init --lib` 会在 `[package]` 中写入 `entry = "src/lib.rid"`。`clue init` 不会自动创建入口源码，通常需要手动添加：
 
 ```text
 hello/

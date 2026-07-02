@@ -38,7 +38,13 @@ Trait 可以包含关联类型，让实现者指定 trait 方法中用到的具�
 ```riddle
 trait Iterator {
     type Item;
-    fun next() -> Option<Self::Item>;
+    fun next(&mut self) -> Option<Self::Item>;
+}
+
+trait IntoIterator {
+    type Item;
+    type IntoIter;
+    fun into_iter(self) -> Self::IntoIter;
 }
 ```
 
@@ -48,7 +54,7 @@ trait Iterator {
 impl Iterator for Counter {
     type Item = i32;
 
-    fun next() -> Option<i32> {
+    fun next(&mut self) -> Option<Self::Item> {
         // ...
     }
 }
@@ -123,5 +129,6 @@ fun main() {
 - `trait` 定义共享行为接口；
 - `impl Trait for Type` 为类型实现 trait；
 - 关联类型让 trait 的使用更灵活；
+- `Iterator` / `IntoIterator` 是 `for item in value` 的类型检查协议；
 - `#[lang = "copy"]` 标记的 `Copy` 会影响 move checker；
 - std 中已经放入一批 Rust 风格 lang trait，占位多于运行时能力。
