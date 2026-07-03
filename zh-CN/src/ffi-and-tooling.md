@@ -32,6 +32,8 @@ cargo run -p riddlec -- --backend c examples/basics/arrays_and_associated_types.
 
 `riddlec` 会生成 C 代码，然后查找 `cc`、`gcc` 或 `clang` 编译成本机可执行文件。C backend 需要系统中有 C 编译器和 Boehm GC，链接参数为 `-lgc`。
 
+当前 C backend 会把 Riddle 的结构体生成为 C `struct`，固定长度数组生成为 C 数组字段，初始化含数组字段的结构体时使用 `memcpy` 复制数组存储。枚举值会生成为带 `tag` 和 payload 字段的结构体表示。raw string 会按 C 字符串规则转义后输出。
+
 `--output` 的行为：
 
 - `--output app`：写出 `app.c`，再编译为 `app` 或 Windows 下的 `app.exe`；

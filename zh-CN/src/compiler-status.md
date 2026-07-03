@@ -24,7 +24,7 @@ riddlec [--verbose] [--backend c] [--output <file>] <file>...
 
 `--backend c` 会生成 C 代码，并调用本机 `cc`、`gcc` 或 `clang` 编译成可执行文件。运行 C backend 需要系统上可用的 C 编译器和 Boehm GC（链接参数为 `-lgc`）。
 
-`riddlec` 会自动把 `std/lib.rid` 拼到用户源码后面，因此基础 lang trait（`Copy`、`Clone`、`Debug` 等）不需要手动引入。
+`riddlec` 会自动把 `std/lib.rid` 拼到用户源码后面，因此基础 lang trait（如 `std::marker::Copy`、`std::clone::Clone`、`std::fmt::Debug`）不需要手动定义。
 
 ### MIR 中间表示
 
@@ -77,11 +77,11 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - 顶层、`impl` 和 `trait` 内的 `type` 别名（含默认关联类型）；
 - 先声明后赋值；
 - 函数定义和函数声明；
-- 泛型函数（类型参数从实参推断，支持 `<T: Trait>` bound，C backend 单态化）；
+- 泛型函数（类型参数和 const 参数从实参推断，支持 `<T: Trait>` bound、`where` 子句，C backend 单态化）；
 - 函数参数、返回类型、尾表达式和 `return`；
 - 块表达式；
 - 字段访问、函数调用、方法调用；
-- 数组字面量、数组索引；
+- 数组字面量、数组重复表达式 `[value; N]`、数组索引；
 - 结构体字面量和字段简写；
 - 类型转换表达式 `expr as Type`；
 - `unsafe { ... }` 块语法；
@@ -101,7 +101,8 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 
 - `if` / `else if` / `else` 表达式；
 - `while` 循环；
-- `for item in iterable` 循环，按 `IntoIterator` / `Iterator` 做类型检查；
+- `for item in iterable` 循环，按 `IntoIterator` / `Iterator` 做类型检查，并在 MIR 中降成 `into_iter` / `next` 调用；
+- 标准库 `Range` 和固定长度数组 `[T; N]` 可直接用于 `for`，数组按值遍历且不要求元素类型为 `Copy`；
 - `match` 表达式；
 - `match` guard；
 - `_` 通配模式；
@@ -122,12 +123,15 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - 原始指针类型：`*const T`、`*mut T`；
 - 元组类型；
 - 固定长度数组 `[T; N]`；
+- const generics，例如 `struct Buffer<T, const N: usize> { data: [T; N] }`；
 - 结构体；
 - 枚举；
 - 标准库 `Option<T>`；
 - 函数类型；
 - 泛型函数、泛型结构体、泛型枚举、泛型 impl；
+- 泛型 bound：`<T: Trait>`、`<T: A + B>`、`where T: Trait`；
 - 类型参数实例化；
+- const 参数实例化，例如 `Buffer<i32, 3>`；
 - 无空格嵌套泛型类型参数，例如 `Box<Box<i32>>` 和 `Box<Box<Box<i32>>>`。
 
 ### Trait 和 impl
@@ -142,8 +146,11 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - 关联函数路径调用 `Type::function(...)`；
 - `Type::Assoc` 关联类型路径；
 - trait impl 合约检查：缺少方法、参数类型、返回类型和缺少关联类型会报错；
-- 泛型 trait impl 模式匹配，例如 `impl<T> Copy for Box<T>`。
-- 标准库 `Iterator` / `IntoIterator` 协议，含 `Range`、`range(start, end)` 和 `for` 遍历。
+- 泛型 trait impl 模式匹配，例如 `impl<T> std::marker::Copy for Box<T>`；
+- `impl` 上的 `where` 子句，并检查 Paterson condition：约束必须严格小于被实现的类型；
+- `+` 可通过 `#[lang = "add"]` 的 `Add` trait 为非数值类型分派；
+- `==` / `!=` 检查 `PartialEq`，有序比较检查 `PartialOrd`；
+- 标准库 `Iterator` / `IntoIterator` 协议，含 `Range`、`range(start, end)`、数组 `IntoIterator` 和 `for` 遍历。
 
 ### 属性和标准库内置项
 
@@ -170,7 +177,7 @@ match value {
 当前 `std/lib.rid` 会自动拼到用户源码后面，里面定义了：
 
 - `Option<T>`；
-- `Iterator`、`IntoIterator`、`Range` 和 `range(start, end)`；
+- `Iterator`、`IntoIterator`、`ArrayIter<T, const N>`、`Range` 和 `range(start, end)`；
 - `std::marker::Copy`；
 - `std::clone::Clone`；
 - `std::default::Default`；
@@ -179,13 +186,20 @@ match value {
 - `std::hash::Hash`；
 - `std::ops` 下的算术、位运算、移位和复合赋值 trait。
 
-目前真正影响编译器语义的是 `#[lang = "copy"]`：被它标记的 `Copy` trait 会被 move checker 用来决定用户类型是否按复制语义处理。其他 lang trait 已在 std 中占位，操作符分派仍由编译器内置逻辑处理。
+当前影响编译器语义的 lang trait 包括：
+
+- `#[lang = "copy"]`：被它标记的 `Copy` trait 会被 move checker 用来决定用户类型是否按复制语义处理；
+- `#[lang = "add"]`：非数值类型的 `+` 会分派到 `Add::add`；
+- `#[lang = "partial_eq"]`：用户类型使用 `==` / `!=` 时需要满足 `PartialEq`；
+- `#[lang = "partial_ord"]`：用户类型使用 `<`、`>`、`<=`、`>=` 时需要满足 `PartialOrd`。
+
+其他 lang trait 已在 std 中占位，运行时能力仍有限。
 
 ### 所有权、移动和逃逸
 
 - 值默认移动；
 - 标量、引用、函数、枚举等内置 Copy 候选默认可复制；
-- 用户类型可以通过实现 lang `Copy` 进入复制语义；
+- 用户类型可以通过实现 `std::marker::Copy` 进入复制语义；
 - move checker 检查移动后使用；
 - 借用期间移动会报错；
 - 字段访问本身不会移动整个结构体；
@@ -194,7 +208,8 @@ match value {
 
 ### 字符串和 FFI
 
-- 字符串字面量；
+- 普通字符串字面量 `"..."`；
+- raw string：`r"..."`、`r#"..."#`、`r###"..."###`；
 - `str` 不定长类型；
 - `&str` 胖指针；
 - 字符串字面量可赋给 `&str`；
@@ -226,10 +241,10 @@ match value {
 ## 当前限制
 
 - 标准库 trait 多数只是 lang 标记和基础 impl，占位多于运行时能力；
-- 操作符还没有真正通过 trait 分派；
-- `for` 的类型检查走 `IntoIterator` / `Iterator`，MIR 后端当前只把标准库 `Range` 降成真实循环；
-- 泛型目前偏向类型级单态化，尚未覆盖完整 Rust 泛型能力（如 where 约束）；
-- `where` 已是关键字，但约束语法和语义尚未实现；
+- 目前只有 `+` 对用户类型走 `Add` trait 分派，其他算术、位运算、移位和复合赋值操作符仍主要是内置检查；
+- 显式泛型函数调用和显式泛型结构体构造表达式还不支持，例如 `f::<T>()`、`Type::<T> { ... }`；
+- 泛型目前偏向单态化，尚未覆盖完整 Rust 泛型能力；
+- 泛型参数上的 `for` 还没有完整支持；
 - 字段级可见性尚未做类型检查约束；
 - C backend 需要外部 C 编译器和 Boehm GC；
 - Cranelift / JS / Lua 后端代码和测试齐全，但 CLI 尚未暴露切换入口；

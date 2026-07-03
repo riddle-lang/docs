@@ -60,6 +60,54 @@ impl Iterator for Counter {
 }
 ```
 
+`Iterator` 和 `IntoIterator` 是 `for item in value` 使用的协议。标准库已经提供 `Option<T>`、`Range`、`range(start, end)`，以及固定长度数组 `[T; N]` 的 `IntoIterator` 实现：
+
+```riddle
+fun main() {
+    for n in range(0, 3) {
+        // n: i32
+    }
+
+    for value in [1, 2, 3] {
+        // value: i32
+    }
+}
+```
+
+数组迭代器在 std 中写作 `ArrayIter<T, const N: usize>`，因此 `[1, 2, 3]` 会匹配 `impl<T, const N: usize> IntoIterator for [T; N]`。数组按值产出元素，当前实现不要求元素类型是 `Copy`。
+
+## 泛型约束
+
+泛型函数和 impl 可以通过 bound 要求类型实现某个 trait：
+
+```riddle
+fun read<T: Named>(value: T) -> i32 {
+    value.name()
+}
+
+fun combine<T: Named + Tagged>(value: T) -> i32 {
+    value.name() + value.tag()
+}
+```
+
+bound 可以约束关联类型：
+
+```riddle
+fun add_box<T: std::ops::Add<Output = T>>(left: T, right: T) -> T {
+    left + right
+}
+```
+
+也可以使用 `where` 子句：
+
+```riddle
+impl<T> Wrap for Box<T>
+where T: Marker
+{}
+```
+
+`impl` 上的 `where` 约束会检查 Paterson condition：约束必须严格小于被实现的类型，避免递归 trait 求解无限增长。
+
 ## 内置 Trait
 
 Riddle 的 `std/lib.rid` 会自动拼到用户源码后面。标准库中用 Rust 风格属性 `#[lang = "..."]` 标记编译器需要识别的特殊 trait。
@@ -74,7 +122,7 @@ trait Copy {
 }
 ```
 
-基础类型（`i32`、`bool`、`f64` 等）在 std 中实现了 `Copy`。你也可以为自己的类型实现它：
+基础类型（`i32`、`bool`、`f64` 等）在 std 中实现了 `std::marker::Copy`。你也可以为自己的类型实现它：
 
 实现了 `Copy` 的类型在赋值后原变量仍然可用：
 
@@ -85,7 +133,7 @@ struct Point {
 }
 
 // Point 的字段都是 i32（Copy），可以安全实现 Copy
-impl Copy for Point { }
+impl std::marker::Copy for Point { }
 
 fun main() {
     let p = Point { x: 1, y: 2 };
@@ -101,12 +149,12 @@ struct Box<T> {
     value: T,
 }
 
-impl<T> Copy for Box<T> {}
+impl<T> std::marker::Copy for Box<T> {}
 
 fun main() {
     let a: Box<i32> = Box { value: 1 };
     let b = a;
-    let c = a; // OK：Box<i32> 匹配 impl<T> Copy for Box<T>
+    let c = a; // OK：Box<i32> 匹配 impl<T> std::marker::Copy for Box<T>
 }
 ```
 
@@ -122,7 +170,7 @@ fun main() {
 - `Hash`；
 - `Add`、`Sub`、`Mul`、`Div`、`Rem`、`Neg`、`Not`、位运算、移位和复合赋值 trait。
 
-这些 trait 目前主要作为标准库占位和类型信息；操作符分派仍由编译器内置逻辑处理。
+当前编译器会使用 `#[lang = "add"]` 的 `Add` 为非数值类型分派 `+`，并用 `Output` 关联类型决定结果类型。`PartialEq` 会参与 `==` / `!=` 检查，`PartialOrd` 会参与 `<`、`>`、`<=`、`>=` 检查。其余操作符 trait 已在 std 中定义，主要还是标准库占位和类型信息。
 
 ## 小结
 
@@ -130,5 +178,6 @@ fun main() {
 - `impl Trait for Type` 为类型实现 trait；
 - 关联类型让 trait 的使用更灵活；
 - `Iterator` / `IntoIterator` 是 `for item in value` 的类型检查协议；
+- bound 和 `where` 子句可以约束泛型函数、结构体、枚举和 impl；
 - `#[lang = "copy"]` 标记的 `Copy` 会影响 move checker；
-- std 中已经放入一批 Rust 风格 lang trait，占位多于运行时能力。
+- `Add`、`PartialEq`、`PartialOrd` 已经参与部分操作符检查；其他 std lang trait 占位多于运行时能力。

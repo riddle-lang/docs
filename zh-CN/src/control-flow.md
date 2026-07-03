@@ -85,7 +85,24 @@ fun sum_to_three() -> i32 {
 }
 ```
 
-当前可执行后端先支持标准库 `Range`，也就是 `range(start, end)` 产生的半开区间。
+标准库提供了两个常用可迭代值：
+
+- `range(start, end)` 产生半开区间 `[start, end)`；
+- 固定长度数组 `[T; N]` 会通过 `ArrayIter<T, N>` 逐个按值产出元素，元素类型不需要实现 `Copy`。
+
+```riddle
+fun use_array() -> i32 {
+    let mut sum = 0;
+
+    for item in [1, 2, 3] {
+        sum += item;
+    }
+
+    sum
+}
+```
+
+用户类型只要实现 `IntoIterator`，并让它的 `IntoIter` 实现 `Iterator`，也可以用于 `for`。MIR 降级会把这类循环降成 `into_iter` 和 `next` 方法调用。
 
 ## match 表达式
 

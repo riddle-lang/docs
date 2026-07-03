@@ -44,20 +44,29 @@ use_tree =
 
 // == items ==
 
-enum_decl = "enum" ident generic_params? "{" (enum_variant ("," enum_variant)* ","?)? "}";
+enum_decl = "enum" ident item_generic_params? where_clause? "{" (enum_variant ("," enum_variant)* ","?)? "}";
 enum_variant = attribute* ident ("(" type_list? ")")? ("{" struct_field_list? "}")?;
 
 trait_decl = "trait" ident "{" trait_item* "}";
 trait_item = attribute* (func_sig | type_alias_decl);
 
-impl_decl = "impl" generic_params? path ("for" ty)? "{" impl_item* "}";
+impl_decl = "impl" generic_params? ty ("for" ty)? where_clause? "{" impl_item* "}";
 impl_item = attribute* (func_decl | type_alias_decl | const_decl);
 
-func_sig = "fun" ident "(" (param ("," param)*)? ")" ("->" ty)?;
+func_sig = "fun" ident generic_params? "(" (param ("," param)*)? ")" ("->" ty)? where_clause?;
 type_alias_decl = "type" ident ("=" ty)? ";";
 const_decl = "const" ident ":" ty ("=" expression)? ";";
 
-generic_params = "<" ident ("," ident)* ">";
+item_generic_params = "<" item_generic_param ("," item_generic_param)* ">";
+item_generic_param = ident | "const" ident ":" ty;
+
+generic_params = "<" generic_param ("," generic_param)* ">";
+generic_param = ident (":" generic_bound ("+" generic_bound)*)? | "const" ident ":" ty;
+generic_bound = path ("<" generic_bound_arg ("," generic_bound_arg)* ","? ">")?;
+generic_bound_arg = ident "=" ty | ty;
+where_clause = "where" where_predicate ("," where_predicate)* ","?;
+where_predicate = ty ":" generic_bound ("+" generic_bound)*;
+
 type_args = "<" type_list? ">";
 type_list = ty ("," ty)* ","?;
 
@@ -67,13 +76,13 @@ var_decl = "let" "mut"? ident (":" ty)? ("=" expression)? ";";
 
 param = attribute* ((("&" "mut"?)? "self") | (ident ":" ty));
 
-func_decl = "fun" ident "(" (param ("," param)*)? ")" ("->" ty)? (block | ";");
+func_decl = "fun" ident generic_params? "(" (param ("," param)*)? ")" ("->" ty)? where_clause? (block | ";");
 
 block = "{" statement* expression? "}";
 
 struct_param = attribute* ident ":" ty;
 
-struct_decl = "struct" ident generic_params? "{" (struct_param ("," struct_param)* ","?)? "}";
+struct_decl = "struct" ident item_generic_params? where_clause? "{" (struct_param ("," struct_param)* ","?)? "}";
 
 return_stmt = "return" expression? ";";
 
@@ -153,8 +162,10 @@ path = ("::")? (ident | "self" | "super" | "crate")
 ty = attribute* (
      path type_args?
    | "&" "mut"? ty
+   | "&&" ty
    | "*" ("const" | "mut") ty
    | "[" ty ";" expression "]"
+   | int_lit
    | "(" (ty ("," ty)* ","?)? ")"
    );
 
@@ -174,7 +185,7 @@ literal = int_lit | float_lit | string_lit | char_lit | bool_lit;
 int_lit = [0-9]+ ("i8" | "i16" | "i32" | "i64" | "i128" | "isize"
                 | "u8" | "u16" | "u32" | "u64" | "u128" | "usize")?;
 float_lit = [0-9]+ ("." [0-9]+)? ([eE] [+-]? [0-9]+)? ("f16" | "f32" | "f64" | "f128")?;
-string_lit = "\"" ... "\"";
+string_lit = "\"" ... "\"" | "r" "#"* "\"" ... "\"" "#"*;
 char_lit = "'" ... "'";
 bool_lit = "true" | "false";
 

@@ -27,13 +27,11 @@ let d = 3.14f32;   // f32
 
 ### 整数字面量格式
 
-整数字面量支持多种进制和下划线分隔：
+当前词法层可用的是十进制整数字面量和类型后缀：
 
 ```riddle
-let dec = 1_000_000;       // 十进制，下划线增强可读性
-let hex = 0xFF;            // 十六进制
-let oct = 0o77;            // 八进制
-let bin = 0b1010;          // 二进制
+let dec = 1000000;
+let sized = 42usize;
 ```
 
 ## 复合类型
@@ -47,6 +45,16 @@ let nums: [i32; 3] = [1, 2, 3];
 let repeated: [i32; 3] = [0; 3];
 let mut arr: [i32; 2] = [10, 20];
 arr[0] = 99;  // 需要 `mut`
+```
+
+数组长度也可以来自 const 泛型参数：
+
+```riddle
+struct Buffer<T, const N: usize> {
+    data: [T; N],
+}
+
+let b: Buffer<i32, 3> = Buffer { data: [1, 2, 3] };
 ```
 
 ### 元组 `(A, B, ...)`
@@ -83,10 +91,18 @@ let p = Point { x: 1, y: 2 };
 let x = p.x;  // 字段访问
 ```
 
-结构体可以带类型参数：
+结构体可以带类型参数，也可以用 `where` 子句约束类型参数：
 
 ```riddle
+trait Marker {}
+
 struct Box<T> {
+    value: T,
+}
+
+struct Marked<T>
+where T: Marker
+{
     value: T,
 }
 
@@ -106,18 +122,25 @@ enum Option {
 let val = Option::Some(42);
 ```
 
-枚举也可以带类型参数：
+枚举也可以带类型参数和 `where` 子句：
 
 ```riddle
 enum Option<T> {
     None,
     Some(T),
 }
+
+enum Slot<T>
+where T: Marker
+{
+    Some(T),
+    None,
+}
 ```
 
-### 泛型类型参数
+### 泛型类型参数和 const 参数
 
-当前实现支持结构体、枚举和 `impl` 上的简单类型参数。类型参数使用 Rust 风格尖括号：
+当前实现支持函数、结构体、枚举和 `impl` 上的类型参数。类型参数使用 Rust 风格尖括号：
 
 ```riddle
 struct Pair<A, B> {
@@ -126,6 +149,16 @@ struct Pair<A, B> {
 }
 
 let p: Pair<i32, bool> = Pair { left: 1, right: true };
+```
+
+泛型参数列表中也可以声明 const 参数。当前 const 参数主要用于数组长度，显式类型实参中直接写整数：
+
+```riddle
+struct Buffer<T, const N: usize> {
+    data: [T; N],
+}
+
+let b: Buffer<i32, 3> = Buffer { data: [1, 2, 3] };
 ```
 
 嵌套类型参数不需要在 `>` 之间插入空格：
@@ -138,7 +171,19 @@ let b: Box<Box<Box<i32>>> = Box {
 };
 ```
 
-当前泛型能力偏向类型级单态化。函数类型参数支持 `<T: Trait>` 和 `<T: A + B>` bound，bound 提供的 trait 方法会在单态化后静态分派；尚未实现 `where` 约束语法。
+当前泛型能力偏向单态化。函数和 impl 的类型参数支持 `<T: Trait>`、`<T: A + B>`、`Trait<Assoc = Type>` 和 `where T: Trait` bound；结构体和枚举可以使用 `where` 子句约束类型参数：
+
+```riddle
+trait Marker {}
+
+struct Box<T>
+where T: Marker
+{
+    value: T,
+}
+```
+
+bound 提供的 trait 方法会在单态化后静态分派。
 
 函数也可以带简单类型参数，调用时由实参类型推断：
 
@@ -206,6 +251,8 @@ let s: &str = "hello";    // 正确: &str 是胖指针
 | `&T`（定长） | `T*` |
 | `*const T` | `T*` |
 | `*mut T` | `T*` |
+| `[T; N]` | C 数组，作为字段时写成 `T field[N]` |
+| `enum` | 带 `tag` 和 payload 字段的 C `struct` |
 | `&str`（Riddle 内部） | `struct { const char* ptr; size_t len; }` |
 | `str`（Riddle 内部） | `struct { const char* ptr; size_t len; }` |
 | `str` / `&str`（外部 C 函数参数） | `const char*` |

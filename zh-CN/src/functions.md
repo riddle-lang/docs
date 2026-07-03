@@ -100,14 +100,36 @@ fun pair<A, B>(first: A, second: B) -> (A, B) {
 类型参数可以带 trait bound：
 
 ```riddle
-fun copy_id<T: Copy>(value: T) -> T {
+fun copy_id<T: std::marker::Copy>(value: T) -> T {
     value
 }
 ```
 
-多个 bound 用 `+` 连接，例如 `<T: Named + Tagged>`。
+多个 bound 用 `+` 连接，例如 `<T: Named + Tagged>`。bound 也可以约束关联类型，例如 `<T: std::ops::Add<Output = T>>`。
 
-调用泛型函数时，编译器会检查推断出的实参类型是否满足 bound；函数体内可以通过 bound 调用 trait 方法，C backend 会在单态化后静态分派到具体 impl。当前还没有实现 `where` 约束语法。
+也可以把约束写成 `where` 子句：
+
+```riddle
+fun read<T>(value: T) -> i32
+where T: Named
+{
+    value.name()
+}
+```
+
+调用泛型函数时，编译器会检查推断出的实参类型是否满足 bound；函数体内可以通过 bound 调用 trait 方法，C backend 会在单态化后静态分派到具体 impl。
+
+函数也支持 const 泛型参数。当前常见用法是把数组长度作为编译期参数：
+
+```riddle
+fun len<const N: usize>(values: [i32; N]) -> i32 {
+    0
+}
+
+fun main() {
+    let n = len([1, 2, 3]); // N 推断为 3
+}
+```
 
 ## 函数声明
 
@@ -126,5 +148,5 @@ fun print(value: i32);
 - 返回类型写在 `->` 后面；
 - 函数体尾表达式可以作为返回值；
 - `return` 用于提前返回；
-- 函数可以带类型参数 `<T>`，C backend 会单态化；
-- 泛型函数支持 `<T: Trait>` 和 `<T: A + B>` bound，并可在函数体内调用 bound 提供的 trait 方法；当前还不支持 `where` 约束。
+- 函数可以带类型参数 `<T>` 和 const 参数 `<const N: usize>`，C backend 会单态化；
+- 泛型函数支持 `<T: Trait>`、`<T: A + B>`、`<T: Trait<Assoc = Type>>` 和 `where T: Trait`，并可在函数体内调用 bound 提供的 trait 方法。

@@ -80,6 +80,21 @@ fun main() -> i32 {
 
 当前 C backend 会为用到的泛型方法生成单态化函数。
 
+泛型 impl 也可以带 const 参数：
+
+```riddle
+struct ArrayIter<T, const N: usize> {
+    values: [T; N],
+    index: usize,
+}
+
+impl<T, const N: usize> ArrayIter<T, N> {
+    fun len(&self) -> usize {
+        N
+    }
+}
+```
+
 ## Trait impl
 
 为类型实现 trait 使用 `impl Trait for Type`：
@@ -103,6 +118,23 @@ impl Show for Widget {
 
 编译器会检查 trait 要求的方法和关联类型是否完整、签名是否匹配。
 
+trait impl 可以使用 `where` 子句约束泛型参数：
+
+```riddle
+trait Marker {}
+trait Wrap {}
+
+struct Box<T> {
+    value: T,
+}
+
+impl<T> Wrap for Box<T>
+where T: Marker
+{}
+```
+
+为了避免 trait 求解无限递归，`impl` 的 `where` 约束必须满足 Paterson condition：约束里的类型要严格小于被实现的类型。例如 `impl<T> Foo for T where Vec<T>: Foo {}` 会被拒绝。
+
 ## 常量和类型别名
 
 `impl` 块中还可以定义关联常量和关联类型别名：
@@ -120,6 +152,8 @@ impl Point {
 - `Type::function(...)` 调用关联函数；
 - `value.method(...)` 调用带接收者的方法；
 - `impl<T> Type<T>` 支持泛型 impl；
+- `impl<T, const N: usize>` 支持 const 泛型 impl；
 - `impl Trait for Type` 为类型实现 trait；
 - trait impl 会检查方法签名和关联类型；
+- `where` 子句可以约束泛型 impl，并会检查 Paterson condition；
 - `impl` 块内也可以定义关联常量（`const`）和关联类型别名（`type`）。

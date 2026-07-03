@@ -38,6 +38,16 @@ fun main() {
 let s: &str = "hello";  // "hello" 的类型是 str，强制转换为 &str
 ```
 
+如果字符串内容里包含很多引号或反斜杠，可以使用 raw string。raw string 不解释转义，结束符由 `#` 的数量决定：
+
+```riddle
+let a: &str = r"hello";
+let b: &str = r#"say "hello""#;
+let c: &str = r###"content with "# inside"###;
+```
+
+`#[lang = r#"copy"#]` 这类属性字符串也支持 raw string。
+
 ## 函数中的 &str 使用
 
 `&str` 可以自由地在函数之间传递——它只是一个胖指针值：
@@ -83,6 +93,7 @@ fun main() {
 | `&str` | 胖指针 `{ ptr, len }` | 胖指针 `{ ptr, len }` |
 | `String` | 堆分配的可增长字符串 | 暂无 |
 | 字面量类型 | `&'static str` | `str`（自动强制转换为 `&str`） |
+| raw string | `r#"..."#` | `r#"..."#` |
 | 生命周期 | 需要标注生命周期 | 无生命周期标注，逃逸分析自动处理 |
 | C ABI | 需显式转换 `CStr` | 外部 C 参数中 `str` / `&str` 传为 `const char*` |
 

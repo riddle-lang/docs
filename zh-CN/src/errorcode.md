@@ -1,6 +1,6 @@
 # Riddle 错误码参考
 
-## 类型检查 (E0001–E0013, E0031–E0034, E0072)
+## 类型检查 (E0001–E0013, E0031–E0037, E0072)
 
 ### E0001 — 类型不匹配
 赋值、函数参数、返回值的类型与预期不符。
@@ -108,6 +108,30 @@ fun wrap<T>(value: T) -> T {
 变量或参数的类型标注无法解析或格式不正确。
 ```riddle
 let x: InvalidType = 1;  // E0034: invalid type annotation
+```
+
+### E0035 — 泛型 bound 不满足
+实例化泛型函数、结构体、枚举或 impl 时，实际类型没有实现要求的 trait。
+```riddle
+trait Marker {}
+struct Box<T> where T: Marker { value: T }
+struct Plain {}
+let b = Box { value: Plain {} };  // E0035
+```
+
+### E0036 — 比较缺少 trait
+用户类型使用 `==` / `!=` 时需要 `PartialEq`，使用有序比较时需要 `PartialOrd`。
+```riddle
+struct Point { x: i32 }
+let same = Point { x: 1 } == Point { x: 2 };  // E0036
+```
+
+### E0037 — impl where 子句违反 Paterson condition
+trait impl 的 `where` 约束不能和被实现类型一样大或更大，否则 trait 求解可能无限递归。
+```riddle
+trait Foo {}
+struct Vec<T> { value: T }
+impl<T> Foo for T where Vec<T>: Foo {}  // E0037
 ```
 
 ### E0072 — 递归类型无限大小
@@ -297,10 +321,16 @@ let q = p;  // E0304
 
 ---
 
-## 泛型与类型 (E0033, E0072)
+## 泛型与类型 (E0033, E0035, E0037, E0072)
 
 ### E0033 — 递归泛型调用
 泛型函数递归调用自身时，如果实际类型参数与定义不同（例如被包装进另一个泛型），会导致编译器无限单态化。
+
+### E0035 — 泛型 bound 不满足
+泛型函数、结构体、枚举或 impl 的 bound 会在实例化时检查；不满足时会报错。
+
+### E0037 — impl where 子句违反 Paterson condition
+`impl` 的 `where` 约束必须严格小于被实现类型，例如 `impl<T> Trait for T where Vec<T>: Trait {}` 会被拒绝。
 
 ### E0072 — 递归类型具有无限大小
 结构体或枚举直接或间接包含自身，没有任何间接层（引用、指针等），导致编译期无法计算类型大小。插入 `&`、`*const` 或 `*mut` 打破循环即可修复。
