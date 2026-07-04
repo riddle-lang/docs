@@ -109,6 +109,16 @@ fun wrap<T>(value: T) -> T {
 ```riddle
 let x: InvalidType = 1;  // E0034: invalid type annotation
 ```
+数组类型使用 Rust 风格 `[T; N]`，元素类型在前、长度在后。写反时主错误只描述语法无效，修复方案会放在 `note:` 中：
+```riddle
+struct Foo {
+    x: [3; i32]
+}
+```
+```text
+error[E0034]: invalid array type syntax
+note: array types use `[T; N]`; write `[i32; 3]` instead
+```
 
 ### E0035 — 泛型 bound 不满足
 实例化泛型函数、结构体、枚举或 impl 时，实际类型没有实现要求的 trait。
@@ -141,7 +151,7 @@ struct Node {
     next: Node,  // E0072: recursive type has infinite size
 }
 ```
-修复建议：使用 `&`、`*const` 或 `*mut` 间接引用打破循环。
+对应 `note:` 会提示使用 `&`、`*const` 或 `*mut` 间接引用打破循环。
 ```riddle
 struct Node {
     next: &Node,  // OK：引用是定长的

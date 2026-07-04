@@ -108,8 +108,7 @@ cargo run -p riddle-lsp
 
 诊断附带：
 - 次要标签（related information）指向关联位置；
-- 注释（notes）提供上下文；
-- 帮助消息（help）提供修复建议；
+- 注释（notes）提供上下文和修复建议；
 - 严重性分层：Error、Warning、Information、Hint。
 
 配置编辑器（以 VS Code 为例），在 LSP 客户端配置中添加：

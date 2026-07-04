@@ -29,7 +29,9 @@ mod math;
 pub mod util;
 ```
 
-编译器会按顺序寻找同目录下的 `name.rid` 和 `name/mod.rid`，并把外部模块展开成内联模块。`pub mod name;` 展开后会保留 `pub`。
+编译器会在当前模块目录下寻找 `name.rid` 或 `name/mod.rid`，并把外部模块展开成内联模块。两者同时存在会报错。`pub mod name;` 展开后会保留 `pub`。
+
+模块目录按 Rust 规则推进：`main.rid` 中的 `mod foo;` 会读取 `foo.rid` 或 `foo/mod.rid`；进入 `foo` 后，`foo.rid` 或 `foo/mod.rid` 里的 `mod bar;` 会读取 `foo/bar.rid` 或 `foo/bar/mod.rid`。只存在文件但没有父模块的 `mod` 声明，不会自动加入编译。
 
 解析路径时可以使用 `self`、`super`、`crate` 和以 `::` 开头的绝对路径。
 
@@ -156,7 +158,7 @@ fun unwrap_or_zero(value: Option<i32>) -> i32 {
 ## 小结
 
 - `mod name { ... }` 定义内联模块；
-- `mod name;` 会从 `name.rid` 或 `name/mod.rid` 展开外部模块；
+- `mod name;` 会从当前模块目录的 `name.rid` 或 `name/mod.rid` 展开外部模块；
 - 模块项默认私有，跨模块路径只导出 `pub` 项；
 - `use` 支持简单导入、别名、glob、列表和 `pub use` 重新导出；
 - Clue 的本地 path 依赖会作为模块注入当前包；

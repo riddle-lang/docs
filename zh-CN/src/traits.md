@@ -60,7 +60,7 @@ impl Iterator for Counter {
 }
 ```
 
-`Iterator` 和 `IntoIterator` 是 `for item in value` 使用的协议。标准库已经提供 `Option<T>`、`Range`、`range(start, end)`，以及固定长度数组 `[T; N]` 的 `IntoIterator` 实现：
+`Iterator` 和 `IntoIterator` 是 `for item in value` 使用的协议。标准库把 `Option<T>` 放在 `std::option`、把 `Range` 和 `range(start, end)` 放在 `std::ops`，这些常用项也会在根部重导出，因此普通代码可以直接写 `Option`、`Range` 和 `range`。固定长度数组 `[T; N]` 也已经有 `IntoIterator` 实现：
 
 ```riddle
 fun main() {
@@ -74,7 +74,7 @@ fun main() {
 }
 ```
 
-数组迭代器在 std 中写作 `ArrayIter<T, const N: usize>`，因此 `[1, 2, 3]` 会匹配 `impl<T, const N: usize> IntoIterator for [T; N]`。数组按值产出元素，当前实现不要求元素类型是 `Copy`。
+数组迭代器定义在 `std::array` 中，根部兼容重导出为 `ArrayIter<T, const N: usize>`。因此 `[1, 2, 3]` 会匹配 `impl<T, const N: usize> IntoIterator for [T; N]`。数组按值产出元素，当前实现不要求元素类型是 `Copy`。
 
 ## 泛型约束
 

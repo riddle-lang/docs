@@ -48,7 +48,7 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - 全文本同步（`TextDocumentSyncKind::FULL`）；
 - UTF-16 位置编码（正确处理多字节字符如 emoji）；
 - 语义 Token（`textDocument/semanticTokens/full`），包含词法高亮和 HIR 局部变量 `declaration` / `mutable` 标记；
-- 诊断附带次要标签（related information）、注释（notes）和帮助消息（help）；
+- 诊断附带次要标签（related information）和注释（notes）；修复建议放在 `note:` 中，error 主消息只描述问题；
 - 诊断严重性层级：Error、Warning、Information、Hint；
 - 每次按键都运行完整编译流程；
 
@@ -174,10 +174,12 @@ match value {
 
 属性当前会进入 AST/HIR。编译器识别 `#[lang = "..."]`，用于把 std 中的 trait 标记为编译器内置项。
 
-当前 `std/lib.rid` 会自动拼到用户源码后面，里面定义了：
+当前标准库会自动拼到用户源码后面，根部通过 prelude 重导出常用项，同时按 Rust 风格分模块定义：
 
-- `Option<T>`；
-- `Iterator`、`IntoIterator`、`ArrayIter<T, const N>`、`Range` 和 `range(start, end)`；
+- `std::option::Option<T>`；
+- `std::iter::{Iterator, IntoIterator}`；
+- `std::array` 中的数组迭代器，并兼容重导出为 `ArrayIter<T, const N>`；
+- `std::ops::{Range, range(start, end)}`；
 - `std::marker::Copy`；
 - `std::clone::Clone`；
 - `std::default::Default`；

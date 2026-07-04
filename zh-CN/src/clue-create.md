@@ -67,10 +67,13 @@ entry = "src/bin/hello.rid"
 version = "0.1.0"
 ```
 
-构建时会展开 `mod name;`：
+构建时会按 Rust 风格展开 `mod name;`，只有被 `mod` 声明的文件会加入编译：
 
-- 优先读取同目录下的 `name.rid`；
-- 如果不存在，再读取 `name/mod.rid`。
+- 在当前模块目录下读取 `name.rid` 或 `name/mod.rid`；
+- `name.rid` 和 `name/mod.rid` 同时存在会报错；
+- 进入 `name` 模块后，子模块会继续从 `name/` 目录下寻找。
+
+例如 `src/main.rid` 写了 `mod foo;`，会读取 `src/foo.rid` 或 `src/foo/mod.rid`。如果 `src/foo/mod.rid` 里再写 `mod bar;`，会读取 `src/foo/bar.rid` 或 `src/foo/bar/mod.rid`。仅仅存在 `src/foo/mod.rid` 但没有 `mod foo;` 时，这个目录不会被编译。
 
 如果找不到入口文件，Clue 会报错：
 
