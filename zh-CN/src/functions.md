@@ -140,13 +140,3 @@ fun print(value: i32);
 ```
 
 这种形式以分号结束，没有函数体。
-
-## 小结
-
-- 使用 `fun` 定义函数；
-- 参数必须写类型；
-- 返回类型写在 `->` 后面；
-- 函数体尾表达式可以作为返回值；
-- `return` 用于提前返回；
-- 函数可以带类型参数 `<T>` 和 const 参数 `<const N: usize>`，C backend 会单态化；
-- 泛型函数支持 `<T: Trait>`、`<T: A + B>`、`<T: Trait<Assoc = Type>>` 和 `where T: Trait`，并可在函数体内调用 bound 提供的 trait 方法。

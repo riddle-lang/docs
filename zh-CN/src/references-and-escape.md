@@ -140,12 +140,4 @@ fun maybe(flag: bool) -> &Foo {
 | 未逃逸局部 | `Alloca`，栈上存储 |
 | 逃逸局部 | `HeapAlloc`，GC 堆存储 |
 
-C backend 会把 `HeapAlloc` 降为 `GC_MALLOC`，因此使用 C backend 运行这类程序时需要链接 Boehm GC。
-
-## 小结
-
-- `&T` 和 `&mut T` 用于不移动值的访问；
-- move checker 会检查基本借用冲突；
-- 返回引用、逃逸聚合、未知函数调用会让局部值提升到堆；
-- 本地函数调用会通过参数摘要减少不必要的堆提升；
-- 当前逃逸粒度是整个局部变量。
+C backend 会把 `HeapAlloc` 降为内置运行时的 `rgc_alloc`。生成的 C 已包含该运行时，不需要链接外部 GC 库。

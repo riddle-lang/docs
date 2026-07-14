@@ -30,15 +30,20 @@ riddlec [--verbose] [--backend c] [--output <file>] <file>...
 cargo run -p riddlec -- --backend c examples/basics/arrays_and_associated_types.rid
 ```
 
-`riddlec` 会生成 C 代码，然后查找 `cc`、`gcc` 或 `clang` 编译成本机可执行文件。C backend 需要系统中有 C 编译器和 Boehm GC，链接参数为 `-lgc`。
+`riddlec` 只生成 C 源码。生成结果已经包含内置 `rgc` 运行时；需要可执行文件时，再手动调用系统中的 C 编译器，不需要链接外部 GC 库：
+
+```bash
+cc arrays_and_associated_types.c -o arrays_and_associated_types
+```
 
 当前 C backend 会把 Riddle 的结构体生成为 C `struct`，固定长度数组生成为 C 数组字段，初始化含数组字段的结构体时使用 `memcpy` 复制数组存储。枚举值会生成为带 `tag` 和 payload 字段的结构体表示。raw string 会按 C 字符串规则转义后输出。
 
 `--output` 的行为：
 
-- `--output app`：写出 `app.c`，再编译为 `app` 或 Windows 下的 `app.exe`；
-- `--output app.c`：只写出 C 源码，不继续编译；
-- 不写 `--output`：按第一个输入文件名派生输出名。
+- `--output app`：写出 `app.c`；
+- `--output app.c`：写出 `app.c`；
+- 其他输出名会追加 `.c`，例如 `--output app.h` 写出 `app.h.c`；
+- 不写 `--output`：按第一个输入文件名派生 `.c` 输出名。
 
 ## extern "C"
 
@@ -99,7 +104,7 @@ fun main() {
 cargo run -p riddle-lsp
 ```
 
-它通过 stdin/stdout 与编辑器通信，每次按键运行完整编译流程（解析 → HIR 降级 → 作用域图 → 类型检查 → 逃逸分析 → move check），然后通过 LSP 推送诊断：
+它通过 stdin/stdout 与编辑器通信，每次按键运行完整编译流程（解析 → HIR 降级 → 作用域图 → 类型检查 → 逃逸分析 → move check），然后刷新所有已打开文档的诊断：
 
 - **解析错误**：来自词法/语法分析阶段；
 - **HIR 诊断**：包括 E0040（降级错误）、E0050/E0051/E0052（名字解析错误）；
@@ -132,20 +137,8 @@ trait Backend {
 }
 ```
 
-目前已实现的四个后端：
+目前实现并维护的后端：
 
 | 后端 | 文件 | 状态 |
 |------|------|------|
 | C | `crates/mir/src/backend/c.rs` | CLI 可用（`--backend c`） |
-| Cranelift | `crates/mir/src/backend/cranelift.rs` | 代码和测试齐全，CLI 未暴露 |
-| JavaScript | `crates/mir/src/backend/js.rs` | 代码和测试齐全，CLI 未暴露 |
-| Lua | `crates/mir/src/backend/lua.rs` | 代码和测试齐全，CLI 未暴露 |
-
-## 小结
-
-- `riddlec` 当前暴露 C backend；
-- C backend 依赖本机 C 编译器和 Boehm GC；
-- `extern "C"` 支持声明外部函数和导出函数；
-- `unsafe`、原始指针和 `as` 已进入当前语言；
-- `riddle-lsp` 提供编辑器实时诊断；
-- MIR 支持四种后端（C / Cranelift / JS / Lua），通过统一 `Backend` trait 实现。

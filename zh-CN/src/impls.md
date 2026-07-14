@@ -145,15 +145,3 @@ impl Point {
     type Pair = (i32, i32);
 }
 ```
-
-## 小结
-
-- `impl Type` 定义固有函数和方法；
-- `Type::function(...)` 调用关联函数；
-- `value.method(...)` 调用带接收者的方法；
-- `impl<T> Type<T>` 支持泛型 impl；
-- `impl<T, const N: usize>` 支持 const 泛型 impl；
-- `impl Trait for Type` 为类型实现 trait；
-- trait impl 会检查方法签名和关联类型；
-- `where` 子句可以约束泛型 impl，并会检查 Paterson condition；
-- `impl` 块内也可以定义关联常量（`const`）和关联类型别名（`type`）。

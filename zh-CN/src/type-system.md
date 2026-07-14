@@ -138,6 +138,32 @@ where T: Marker
 }
 ```
 
+标准库还提供 Rust 风格的 `Option<T>` 和 `Result<T, E>`，并通过 prelude 重导出：
+
+```riddle
+let value: Option<i32> = Some(1);
+let result: Result<i32, bool> = Ok(1);
+```
+
+枚举可以用 unit、tuple 和 struct 变体模式匹配。编译器会检查枚举匹配是否穷尽，guard 失败时继续尝试后续 arm，并把 payload 绑定为声明中的实际类型：
+
+```riddle
+enum Message {
+    Quit,
+    Number(i32),
+    Pair { left: i32, right: i32 },
+}
+
+fun value(message: Message) -> i32 {
+    match message {
+        Message::Quit => 0,
+        Message::Number(number) if number > 10 => number,
+        Message::Number(number) => number + 1,
+        Message::Pair { left, right } => left + right,
+    }
+}
+```
+
 ### 泛型类型参数和 const 参数
 
 当前实现支持函数、结构体、枚举和 `impl` 上的类型参数。类型参数使用 Rust 风格尖括号：

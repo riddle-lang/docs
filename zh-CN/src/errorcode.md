@@ -1,6 +1,6 @@
 # Riddle 错误码参考
 
-## 类型检查 (E0001–E0013, E0031–E0037, E0072)
+## 类型检查 (E0001–E0013, E0031–E0042, E0072)
 
 ### E0001 — 类型不匹配
 赋值、函数参数、返回值的类型与预期不符。
@@ -142,6 +142,14 @@ trait impl 的 `where` 约束不能和被实现类型一样大或更大，否则
 trait Foo {}
 struct Vec<T> { value: T }
 impl<T> Foo for T where Vec<T>: Foo {}  // E0037
+```
+
+### E0042 — 循环控制语句位于循环外
+`break;` 和 `continue;` 只能出现在 `while` 或 `for` 循环体中。
+```riddle
+fun invalid() {
+    break;  // E0042: `break` outside of a loop
+}
 ```
 
 ### E0072 — 递归类型无限大小

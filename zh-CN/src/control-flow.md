@@ -104,6 +104,30 @@ fun use_array() -> i32 {
 
 用户类型只要实现 `IntoIterator`，并让它的 `IntoIter` 实现 `Iterator`，也可以用于 `for`。MIR 降级会把这类循环降成 `into_iter` 和 `next` 方法调用。
 
+## break 与 continue
+
+`break` 立即结束最近一层循环，`continue` 跳到最近一层循环的下一次迭代：
+
+```riddle
+fun first_three_odd_sum() -> i32 {
+    let mut sum = 0;
+
+    for value in range(0, 10) {
+        if value == 6 {
+            break;
+        }
+        if value % 2 == 0 {
+            continue;
+        }
+        sum += value;
+    }
+
+    sum
+}
+```
+
+当前只支持无值、无标签的 `break;` 和 `continue;`，并且只能在 `while` 或 `for` 循环体中使用。
+
 ## match 表达式
 
 `match` 根据值的形状选择分支：
@@ -135,13 +159,3 @@ fun classify(n: i32) -> i32 {
 ```
 
 当前模式支持 `_`、标识符绑定、字面量、路径、元组、结构体和枚举变体。
-
-## 小结
-
-- `if` 可以作为表达式产生值；
-- 分支是块，块的尾表达式决定分支结果；
-- 没有 `else` 的 `if` 适合执行动作；
-- `while` 用于条件循环；
-- `for` 用于遍历实现 `IntoIterator` 的值；
-- `match` 用于按模式分支；
-- 循环状态通常需要 `mut`。

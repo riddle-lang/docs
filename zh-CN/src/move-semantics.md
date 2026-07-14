@@ -93,12 +93,3 @@ fun main() {
 ```
 
 `std/lib.rid` 已经提供 `std::marker::Copy`，普通程序不需要自己声明这个 trait。只有带 `#[lang = "copy"]` 的 Copy trait 会被 move checker 识别。
-
-## 小结
-
-- Riddle 默认使用移动语义；
-- 赋值和传参会转移值；
-- 移动后原绑定不可用；
-- Copy 类型会复制而不是移动；
-- 临时访问使用引用；
-- 共享和逃逸由引用与 GC 提升机制处理。

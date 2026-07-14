@@ -154,14 +154,3 @@ fun unwrap_or_zero(value: Option<i32>) -> i32 {
     }
 }
 ```
-
-## 小结
-
-- `mod name { ... }` 定义内联模块；
-- `mod name;` 会从当前模块目录的 `name.rid` 或 `name/mod.rid` 展开外部模块；
-- 模块项默认私有，跨模块路径只导出 `pub` 项；
-- `use` 支持简单导入、别名、glob、列表和 `pub use` 重新导出；
-- Clue 的本地 path 依赖会作为模块注入当前包；
-- 路径支持 `self`、`super`、`crate` 和 `::`；
-- `enum` 支持 unit、tuple 和 struct 变体；
-- 枚举和结构体一样可以带简单类型参数。

@@ -39,13 +39,13 @@ cargo run -p riddlec -- --help
 riddlec [--verbose] [--backend c] [--output <file>] <file>...
 ```
 
-例如，把 `examples/basics/arrays_and_associated_types.rid` 通过 C backend 编译为本机可执行文件：
+例如，把 `examples/basics/arrays_and_associated_types.rid` 通过 C backend 生成 C 源码：
 
 ```bash
 cargo run -p riddlec -- --backend c examples/basics/arrays_and_associated_types.rid
 ```
 
-C backend 会生成 C 代码，并调用系统中的 `cc`、`gcc` 或 `clang`。因此本机需要可用的 C 编译器和 Boehm GC（链接参数为 `-lgc`）。如果 `--output` 指向 `.c` 或 `.h` 文件，`riddlec` 只写出 C 源码，不继续编译。
+C backend 只写出 C 源码，不会调用系统编译器。输出已经包含内置 GC；如需本机可执行文件，可以再运行 `cc arrays_and_associated_types.c -o arrays_and_associated_types`，不需要额外 GC 库。
 
 ## 构建文档
 
@@ -75,9 +75,9 @@ mdbook serve --open
 rustup update stable
 ```
 
-### 为什么 `--backend c` 找不到 C 编译器？
+### 如何运行 C backend 的输出？
 
-请确认系统上可以直接运行 `cc --version`、`gcc --version` 或 `clang --version` 中的至少一个命令。C backend 还需要 Boehm GC；如果链接阶段提示找不到 `-lgc`，需要先安装对应开发包。
+`riddlec --backend c` 只生成 `.c` 文件。请使用系统中的 `cc`、`gcc` 或 `clang` 编译该文件；生成代码自带 GC，不需要 `-lgc`。
 
 ### 示例文件在哪里？
 

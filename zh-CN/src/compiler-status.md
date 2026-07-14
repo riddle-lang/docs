@@ -14,7 +14,7 @@ Riddle 仍处于开发阶段。本页记录当前仓库已经实现并被测试�
 6. 逃逸分析（过程间不动点，决定局部值用栈分配还是 GC 堆分配）；
 7. move checker（移动后使用、借用冲突、借用期间赋值/移动检查）；
 8. HIR 到 MIR 降级（SSA 形式，Phi 节点，基本块，`Alloca`/`HeapAlloc` 分配指令）；
-9. 后端代码生成（C / Cranelift / JS / Lua）。
+9. C 后端代码生成。
 
 命令行入口支持：
 
@@ -22,19 +22,19 @@ Riddle 仍处于开发阶段。本页记录当前仓库已经实现并被测试�
 riddlec [--verbose] [--backend c] [--output <file>] <file>...
 ```
 
-`--backend c` 会生成 C 代码，并调用本机 `cc`、`gcc` 或 `clang` 编译成可执行文件。运行 C backend 需要系统上可用的 C 编译器和 Boehm GC（链接参数为 `-lgc`）。
+`--backend c` 会生成 C 代码；如需可执行文件，再使用本机 `cc`、`gcc` 或 `clang` 编译生成结果。GC 运行时已经随生成代码内置，不需要额外链接 Boehm GC。
 
-`riddlec` 会自动把 `std/lib.rid` 拼到用户源码后面，因此基础 lang trait（如 `std::marker::Copy`、`std::clone::Clone`、`std::fmt::Debug`）不需要手动定义。
+`riddlec` 会自动把 `std/lib.rid` 拼到用户源码后面，因此 `std::marker::Copy`、`std::clone::Clone` 和比较、运算 trait 不需要手动定义。
 
 ### MIR 中间表示
 
 MIR（Mid-level IR）是 SSA 形式的中间表示，位于类型检查和代码生成之间：
 
-- **SSA 基本块**：每个函数体由基本块组成，块以 `Terminator`（`Branch`、`CondBranch`、`Return`）结束；
+- **SSA 基本块**：每个函数体由基本块组成，块以 `Terminator`（`Branch`、`CondBranch`、`Return`、`Unreachable`）结束；
 - **Phi 节点**：`InstKind::Phi` 合并来自多个前驱块的值；
 - **分配指令**：`Alloca`（栈分配）和 `HeapAlloc`（GC 堆分配），由逃逸分析结果驱动；
 - **内存操作**：`Load`、`Store`、`FieldPtr`（字段指针）、`IndexPtr`（索引指针）、`ExtractValue`（提取聚合字段）；
-- **值构造**：`StructValue`、`ArrayValue`、`TupleValue`；
+- **值构造**：`StructValue`、`SparseStructValue`、`ArrayValue`、`TupleValue`；枚举使用稀疏初始化保证不同变体的 payload 槽位稳定；
 - **类型转换**：`IntToInt`、`IntToFloat`、`FloatToInt`、`FloatToFloat`、`BoolToInt`、`IntToBool`；
 - **比较操作**：`Cmp` 支持 `Eq`、`Neq`、`Lt`、`Gt`、`LtEq`、`GtEq`。
 
@@ -102,16 +102,17 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - `if` / `else if` / `else` 表达式；
 - `while` 循环；
 - `for item in iterable` 循环，按 `IntoIterator` / `Iterator` 做类型检查，并在 MIR 中降成 `into_iter` / `next` 调用；
+- 泛型参数可以通过 `IntoIterator<Item = ..., IntoIter = ...>` bound 使用 `for`，具体 impl 在单态化时解析；
 - 标准库 `Range` 和固定长度数组 `[T; N]` 可直接用于 `for`，数组按值遍历且不要求元素类型为 `Copy`；
-- `match` 表达式；
-- `match` guard；
+- `match` 表达式和枚举、布尔值穷尽性检查；
+- `match` guard，guard 失败后继续检查后续 arm；
 - `_` 通配模式；
 - 标识符绑定模式；
 - 字面量模式；
 - 路径模式；
 - 元组模式；
 - 结构体模式；
-- 枚举 tuple/struct 变体模式。
+- 枚举 unit/tuple/struct 变体模式，payload 绑定会进入 guard 和 arm 表达式。
 
 ### 类型系统
 
@@ -126,7 +127,7 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - const generics，例如 `struct Buffer<T, const N: usize> { data: [T; N] }`；
 - 结构体；
 - 枚举；
-- 标准库 `Option<T>`；
+- 标准库 `Option<T>` 和 `Result<T, E>`；
 - 函数类型；
 - 泛型函数、泛型结构体、泛型枚举、泛型 impl；
 - 泛型 bound：`<T: Trait>`、`<T: A + B>`、`where T: Trait`；
@@ -176,17 +177,19 @@ match value {
 
 当前标准库会自动拼到用户源码后面，根部通过 prelude 重导出常用项，同时按 Rust 风格分模块定义：
 
+prelude 直接提供 `Option`、`Result`、`Some`、`None`、`Ok`、`Err`、`Copy`、`Clone`、比较 trait 和迭代协议。
+
 - `std::option::Option<T>`；
+- `std::result::Result<T, E>`；
 - `std::iter::{Iterator, IntoIterator}`；
 - `std::array` 中的数组迭代器，并兼容重导出为 `ArrayIter<T, const N>`；
 - `std::ops::{Range, range(start, end)}`；
 - `std::marker::Copy`；
 - `std::clone::Clone`；
-- `std::default::Default`；
-- `std::cmp::{PartialEq, Eq, PartialOrd, Ord}`；
-- `std::fmt::{Debug, Display, Binary, Octal, LowerHex, UpperHex, LowerExp, UpperExp}`；
-- `std::hash::Hash`；
-- `std::ops` 下的算术、位运算、移位和复合赋值 trait。
+- `std::cmp::{Ordering, PartialEq, Eq, PartialOrd, Ord}`；
+- `std::ops` 下的算术、位运算、移位和复合赋值 trait，均有可调用的必需方法。
+
+`Default` 需要按具体 `Self` 调用关联 trait 函数，格式化和哈希还需要对应运行时协议；这些能力尚未实现，因此 std 不再暴露只有名字、没有行为的占位 trait。
 
 当前影响编译器语义的 lang trait 包括：
 
@@ -195,13 +198,14 @@ match value {
 - `#[lang = "partial_eq"]`：用户类型使用 `==` / `!=` 时需要满足 `PartialEq`；
 - `#[lang = "partial_ord"]`：用户类型使用 `<`、`>`、`<=`、`>=` 时需要满足 `PartialOrd`。
 
-其他 lang trait 已在 std 中占位，运行时能力仍有限。
+`Clone::clone`、`PartialEq::eq`、`PartialOrd::partial_cmp`、`Ord::cmp` 和各运算 trait 方法可以直接调用。除 `Add` 外，用户类型的运算符重载尚未接入这些 trait；标量运算符仍由编译器内建处理。
 
 ### 所有权、移动和逃逸
 
 - 值默认移动；
-- 标量、引用、函数、枚举等内置 Copy 候选默认可复制；
-- 用户类型可以通过实现 `std::marker::Copy` 进入复制语义；
+- 标量、共享引用、原始指针和函数等内置 Copy 候选默认可复制；`&mut T` 不可复制；
+- `Option<T>` 和 `Result<T, E>` 仅在所有 payload 类型实现 `Copy` 时实现 `Copy`；
+- 用户类型可以通过实现 `std::marker::Copy` 进入复制语义；编译器会验证结构体字段和所有枚举 payload，并在泛型场景中使用 impl bound；
 - move checker 检查移动后使用；
 - 借用期间移动会报错；
 - 字段访问本身不会移动整个结构体；
@@ -225,30 +229,27 @@ match value {
 
 | 后端 | 状态 |
 |------|------|
-| C backend | CLI 可用：`--backend c`。生成 C 代码后用本机 CC 编译，需要 Boehm GC |
-| Cranelift backend | 仓库中有完整代码和测试（`tests/mir/backend_cranelift.rs`），SSA 形式原生代码生成，当前 CLI 未暴露 |
-| JS backend | 仓库中有完整代码和测试（`tests/mir/backend_js.rs`），生成 JavaScript 代码，当前 CLI 未暴露 |
-| Lua backend | 仓库中有完整代码和测试（`tests/mir/backend_lua.rs`），生成 Lua 代码，当前 CLI 未暴露 |
+| C backend | CLI 可用：`--backend c`。输出包含内置 `rgc` 运行时，不需要外部 GC 库 |
 
-所有后端通过统一的 `Backend` trait 实现：`compile(&mut self, module: &Module) -> Result<String, Error>`。
+C backend 实现统一的 `Backend` trait：`compile(&mut self, module: &Module) -> Result<String, Error>`。
 
 ## 工具状态
 
 | 工具 | 状态 |
 |------|------|
 | `riddlec` | 编译器 CLI，支持前端检查、MIR 降级和 C backend |
-| `riddle-lsp` | LSP 服务器，基于 `tower-lsp`，每次按键运行完整编译流程，推送解析/类型/move 诊断，并提供语义 Token |
+| `riddle-lsp` | LSP 服务器，基于 `tower-lsp`，每次按键运行完整编译流程，刷新所有已打开文档的诊断，并提供语义 Token |
 | `clue` | 项目构建器，支持 `init` 和 `build`，会展开外部模块、解析本地 path 依赖，并输出 `.clue/build/<package>.c` |
 
 ## 当前限制
 
-- 标准库 trait 多数只是 lang 标记和基础 impl，占位多于运行时能力；
 - 目前只有 `+` 对用户类型走 `Add` trait 分派，其他算术、位运算、移位和复合赋值操作符仍主要是内置检查；
+- trait 默认方法尚未实现，因此 `Iterator` 当前只提供核心 `next` 协议，没有 Rust 的适配器方法；
+- `Default`、格式化和哈希协议尚未提供；
+- 浮点余数尚未支持，`Rem` / `RemAssign` 目前只为整数实现；
 - 显式泛型函数调用和显式泛型结构体构造表达式还不支持，例如 `f::<T>()`、`Type::<T> { ... }`；
 - 泛型目前偏向单态化，尚未覆盖完整 Rust 泛型能力；
-- 泛型参数上的 `for` 还没有完整支持；
 - 字段级可见性尚未做类型检查约束；
-- C backend 需要外部 C 编译器和 Boehm GC；
-- Cranelift / JS / Lua 后端代码和测试齐全，但 CLI 尚未暴露切换入口；
+- C backend 的输出需要外部 C 编译器才能生成本机可执行文件；
 - 逃逸分析当前粒度是整个局部变量，不做字段级拆分；
 - 这是开发中工具链，不保证语法和 ABI 稳定。

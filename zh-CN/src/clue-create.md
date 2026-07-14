@@ -5,37 +5,39 @@
 ## 创建项目
 
 ```bash
-clue init hello
+clue new hello
 ```
 
-`--bin` 是默认值，也可以用 `clue init --lib math` 创建库包清单。
+`new` 要求目标目录不存在。要在已有目录中初始化项目，可以运行 `clue init .`。`--bin` 是默认值，也可以用 `clue new --lib math` 创建库项目。
 
-这会创建 `hello/Clue.toml` 和 `hello/.gitignore`。`Clue.toml` 的初始内容如下：
+这会创建 `hello/Clue.toml`、`hello/.gitignore` 和 `hello/src/main.rid`。`Clue.toml` 的初始内容如下：
 
 ```toml
 [package]
 name = "hello"
 version = "0.1.0"
 
+[[bin]]
+name = "hello"
+path = "src/main.rid"
+
 [dependencies]
 ```
 
 `.gitignore` 会忽略 `/.clue`，也就是 Clue 的构建缓存和输出目录。
 
-`clue init --lib` 会在 `[package]` 中写入 `entry = "src/lib.rid"`。`clue init` 不会自动创建入口源码，通常需要手动添加：
+库项目改为生成 `[lib]` 目标和 `src/lib.rid`：
 
-```text
-hello/
-  Clue.toml
-  src/
-    main.rid
+```toml
+[lib]
+name = "math"
+path = "src/lib.rid"
 ```
 
-例如：
+`init` 和 `new` 都不会覆盖已有的 `Clue.toml` 或目标入口源码。默认生成的二进制入口为：
 
 ```riddle
-fun main() -> i32 {
-    0
+fun main() {
 }
 ```
 
@@ -51,14 +53,14 @@ clue build hello
 clue build
 ```
 
-`clue build` 会按顺序寻找入口文件：
+清单中的 `[[bin]].path` 或 `[lib].path` 是首选入口。对于没有显式目标的旧清单，`clue build` 会按顺序寻找入口文件：
 
 1. `src/main.rid`
 2. `src/lib.rid`
 3. `<package-name>.rid`
 4. `main.rid`
 
-也可以在 `Clue.toml` 中指定入口文件：
+旧清单也可以在 `[package]` 中指定入口文件：
 
 ```toml
 [package]
@@ -123,7 +125,7 @@ fun main() -> i32 {
 
 依赖包会使用自己的入口规则，也可以在依赖包的 `[package]` 中设置 `entry`。当前只支持 Cargo 风格的本地 path 依赖，不支持版本解析、lockfile、git 依赖或远程 registry。
 
-作为依赖加载时，Clue 会优先读取依赖包的 `src/lib.rid`。依赖包中要被外部包使用的项需要写成 `pub`：
+作为依赖加载时，Clue 会优先读取依赖包的 `[lib].path`；没有 `[lib]` 目标时，默认先寻找 `src/lib.rid`。依赖包中要被外部包使用的项需要写成 `pub`：
 
 ```riddle
 pub fun one() -> i32 {

@@ -60,7 +60,7 @@ impl Iterator for Counter {
 }
 ```
 
-`Iterator` 和 `IntoIterator` 是 `for item in value` 使用的协议。标准库把 `Option<T>` 放在 `std::option`、把 `Range` 和 `range(start, end)` 放在 `std::ops`，这些常用项也会在根部重导出，因此普通代码可以直接写 `Option`、`Range` 和 `range`。固定长度数组 `[T; N]` 也已经有 `IntoIterator` 实现：
+`Iterator` 和 `IntoIterator` 是 `for item in value` 使用的协议。标准库把 `Option<T>` 放在 `std::option`、把 `Result<T, E>` 放在 `std::result`、把 `Range` 和 `range(start, end)` 放在 `std::ops`，这些常用项也会在根部重导出。与 Rust 一样，prelude 还会重导出 `Some`、`None`、`Ok`、`Err`、`Copy`、`Clone` 和比较 trait。固定长度数组 `[T; N]` 也已经有 `IntoIterator` 实现：
 
 ```riddle
 fun main() {
@@ -149,35 +149,27 @@ struct Box<T> {
     value: T,
 }
 
-impl<T> std::marker::Copy for Box<T> {}
+impl<T: Copy> Copy for Box<T> {}
 
 fun main() {
     let a: Box<i32> = Box { value: 1 };
     let b = a;
-    let c = a; // OK：Box<i32> 匹配 impl<T> std::marker::Copy for Box<T>
+    let c = a; // OK：i32: Copy，因此 Box<i32>: Copy
 }
 ```
 
 只有被 `#[lang = "copy"]` 标记的 trait 会触发 move checker 的复制语义；普通同名或未标记 trait 不会自动生效。
 
+与 Rust 一样，标准库的 `Option<T>` 和 `Result<T, E>` 使用带 bound 的条件 `Copy` 实现。编译器会检查用户 `Copy` impl 的每个结构体字段和枚举 payload；泛型字段必须能由 impl bound 证明为 `Copy`，否则报告 `E0041`。`&mut T` 也不会被视为内建 `Copy` 类型。
+
 ### 其他 std lang trait
 
-当前 std 还定义了这些 lang trait：
+当前 std 定义并实现了这些 lang trait：
 
-- `Clone`、`Default`；
+- `Clone`，提供可调用的 `clone`；
 - `PartialEq`、`Eq`、`PartialOrd`、`Ord`；
-- `Debug`、`Display` 以及数字格式化 trait；
-- `Hash`；
-- `Add`、`Sub`、`Mul`、`Div`、`Rem`、`Neg`、`Not`、位运算、移位和复合赋值 trait。
+- `Add`、`Sub`、`Mul`、`Div`、`Rem`、`Neg`、`Not`、位运算、移位和复合赋值 trait，均提供对应必需方法。
 
-当前编译器会使用 `#[lang = "add"]` 的 `Add` 为非数值类型分派 `+`，并用 `Output` 关联类型决定结果类型。`PartialEq` 会参与 `==` / `!=` 检查，`PartialOrd` 会参与 `<`、`>`、`<=`、`>=` 检查。其余操作符 trait 已在 std 中定义，主要还是标准库占位和类型信息。
+`PartialEq::eq`、`PartialOrd::partial_cmp` 和 `Ord::cmp` 可以作为普通方法调用；整数、字符和布尔值返回 `Ordering`，浮点比较遇到 NaN 时返回 `None`。当前编译器会使用 `#[lang = "add"]` 的 `Add` 为非数值类型分派 `+`，并用 `Output` 关联类型决定结果类型。`PartialEq` 会参与 `==` / `!=` 检查，`PartialOrd` 会参与 `<`、`>`、`<=`、`>=` 检查。其他用户类型运算符重载尚未接入对应 trait，但 trait 方法本身可以直接调用。
 
-## 小结
-
-- `trait` 定义共享行为接口；
-- `impl Trait for Type` 为类型实现 trait；
-- 关联类型让 trait 的使用更灵活；
-- `Iterator` / `IntoIterator` 是 `for item in value` 的类型检查协议；
-- bound 和 `where` 子句可以约束泛型函数、结构体、枚举和 impl；
-- `#[lang = "copy"]` 标记的 `Copy` 会影响 move checker；
-- `Add`、`PartialEq`、`PartialOrd` 已经参与部分操作符检查；其他 std lang trait 占位多于运行时能力。
+Riddle 尚不支持 trait 默认方法，所以 `Iterator` 目前只有 `next` 核心协议，没有 Rust 的 `map`、`filter` 等默认适配器。`Default` 的关联 trait 函数调用、格式化器和哈希器协议也尚未实现；std 不再为这些能力暴露空壳 trait。浮点余数同样暂未支持，`Rem` 和 `RemAssign` 只为整数实现。
