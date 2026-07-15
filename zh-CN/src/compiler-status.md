@@ -104,8 +104,9 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - `for item in iterable` 循环，按 `IntoIterator` / `Iterator` 做类型检查，并在 MIR 中降成 `into_iter` / `next` 调用；
 - 泛型参数可以通过 `IntoIterator<Item = ..., IntoIter = ...>` bound 使用 `for`，具体 impl 在单态化时解析；
 - 标准库 `Range` 和固定长度数组 `[T; N]` 可直接用于 `for`，数组按值遍历且不要求元素类型为 `Copy`；
-- `match` 表达式和枚举、布尔值穷尽性检查；
-- `match` guard，guard 失败后继续检查后续 arm；
+- `match` 表达式，以及枚举、布尔值、`()`、整数、元组和结构体的递归穷尽性检查；
+- 非穷尽整数匹配会报告未覆盖的连续值区间；
+- `match` guard，guard 失败后继续检查后续 arm，且带 guard 的 arm 不计入静态穷尽性；
 - `_` 通配模式；
 - 标识符绑定模式；
 - 字面量模式；

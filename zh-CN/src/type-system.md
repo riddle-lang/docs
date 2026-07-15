@@ -14,6 +14,8 @@ Riddle 的类型系统是静态类型的。每个变量、参数、返回值在�
 | `()` | 单元类型（空） | 0 |
 | `!` | Never（发散） | 0 |
 
+`()` 同时是单元类型和它唯一的值；`unit` 不是 Riddle 的类型名。
+
 ### 字面量后缀
 
 整数和浮点数字面量可以带有类型后缀：
@@ -145,7 +147,7 @@ let value: Option<i32> = Some(1);
 let result: Result<i32, bool> = Ok(1);
 ```
 
-枚举可以用 unit、tuple 和 struct 变体模式匹配。编译器会检查枚举匹配是否穷尽，guard 失败时继续尝试后续 arm，并把 payload 绑定为声明中的实际类型：
+枚举可以用 unit、tuple 和 struct 变体模式匹配。编译器会递归检查 payload 模式是否穷尽，guard 失败时继续尝试后续 arm，并把 payload 绑定为声明中的实际类型：
 
 ```riddle
 enum Message {

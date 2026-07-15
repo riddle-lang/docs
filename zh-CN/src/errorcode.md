@@ -346,7 +346,7 @@ let q = p;  // E0304
 
 ---
 
-## 泛型与类型 (E0033, E0035, E0037, E0072)
+## 泛型、类型与模式 (E0033, E0035, E0037–E0039, E0072)
 
 ### E0033 — 递归泛型调用
 泛型函数递归调用自身时，如果实际类型参数与定义不同（例如被包装进另一个泛型），会导致编译器无限单态化。
@@ -356,6 +356,38 @@ let q = p;  // E0304
 
 ### E0037 — impl where 子句违反 Paterson condition
 `impl` 的 `where` 约束必须严格小于被实现类型，例如 `impl<T> Trait for T where Vec<T>: Trait {}` 会被拒绝。
+
+### E0038 — 无效的枚举变体模式
+枚举变体的所属枚举、形状或字段与被匹配的类型不一致。
+
+```riddle
+enum Left { Same }
+enum Right { Same }
+
+fun value(input: Left) -> i32 {
+    match input {
+        Right::Same => 1,  // E0038
+        Left::Same => 0,
+    }
+}
+```
+
+### E0039 — match 不穷尽
+至少有一个可能的值没有被任何无 guard 的 arm 覆盖。诊断会给出一个缺失模式；整数模式还会在注记中列出未覆盖的连续区间。
+
+```riddle
+enum State { Ready, Done(i32) }
+
+fun value(state: State) -> i32 {
+    match state {
+        State::Ready => 0,
+        State::Done(1) => 1,
+        // E0039: missing pattern `State::Done(_)`
+    }
+}
+```
+
+添加缺失分支，或使用 `_` / 标识符绑定覆盖剩余值。带 guard 的 arm 可能在运行时失败，因此不计入穷尽性。
 
 ### E0072 — 递归类型具有无限大小
 结构体或枚举直接或间接包含自身，没有任何间接层（引用、指针等），导致编译期无法计算类型大小。插入 `&`、`*const` 或 `*mut` 打破循环即可修复。
