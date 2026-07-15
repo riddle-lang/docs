@@ -11,6 +11,10 @@ cargo --version
 
 如果命令能输出版本号，就可以继续构建 Riddle。
 
+## 下载预编译版本
+
+[GitHub Releases](https://github.com/riddle-lang/riddle/releases) 提供 Windows、Linux 和 macOS 的预编译 zip。下载对应平台和架构的文件，解压后把二进制所在目录加入 `PATH`。发布包包含 `clue`、`riddle-lsp`、`riddlec`、README 和 Apache-2.0 许可证。
+
 ## 从源码构建
 
 找一个适合存放代码的目录，执行下述命令：
@@ -31,6 +35,14 @@ cargo install --path . --features install-bins --force --target-dir "$env:TEMP\r
 
 ```bash
 cargo run -p riddlec -- --help
+```
+
+安装后可用以下命令确认版本：
+
+```bash
+riddlec --version
+clue --version
+riddle-lsp --version
 ```
 
 当前命令行入口是 `riddlec`：

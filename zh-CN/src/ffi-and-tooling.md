@@ -17,7 +17,7 @@ riddlec [--verbose] [--backend c] [--output <file>] <file>...
 | `--verbose`, `-v` | 打印 parse、HIR lower、type check、move/escape analysis、MIR lowering 的状态 |
 | `--backend c`, `-b c` | 使用 C backend 生成代码 |
 | `--output <file>`, `-o <file>` | 指定输出文件 |
-| `--version`, `-V` | 打印构建时 git commit hash |
+| `--version`, `-V` | 打印版本号和构建时 git commit hash |
 | `--help`, `-h` | 打印帮助 |
 
 `riddlec` 会自动把 `std/lib.rid` 拼到用户源码后面，因此基础 lang trait 不需要手动引入。
@@ -67,15 +67,17 @@ extern "C" fun add(x: i32, y: i32) -> i32 {
 }
 ```
 
-字符串 FFI 中，`str` 和 `&str` 在 Riddle 内部是胖指针；传给外部 C 函数时，C backend 会把它们作为 `const char*` 传出。
+字符串 FFI 不接受裸 `str` 参数或返回值。`&str` 在 Riddle 内部是胖指针；调用只有声明、没有函数体的 C 导入时，C backend 会把参数的 `ptr` 作为 `const char*` 传出。若导入返回 `&str`，返回指针必须以 NUL 结尾，长度由 `strlen` 恢复。
 
 ```riddle
-extern "C" fun puts(s: str) -> i32;
+extern "C" fun puts(s: &str) -> i32;
 
 fun main() {
     puts("hello from riddle");
 }
 ```
+
+带函数体的 `extern "C"` 是导出定义，不会再作为导入重复声明。它的 `&str` 参数和返回值保留 `riddle_str { ptr, len }` C 结构体 ABI，以免丢失长度。
 
 ## unsafe、原始指针和 as
 

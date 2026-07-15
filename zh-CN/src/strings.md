@@ -1,6 +1,6 @@
 # 字符串
 
-Riddle 中的字符串处理围绕两个类型展开：`str` 和 `&str`。理解它们的区别对于编写正确的 Riddle 代码至关重要。
+`str` 表示不定长的字符串内容，`&str` 表示可传递的字符串引用值。裸 `str` 只能作为引用、原始指针或 `impl` 的目标，不能作为独立值使用。
 
 ## `str` — 不定长字符串切片
 
@@ -32,10 +32,10 @@ fun main() {
 
 ## 字符串字面量
 
-字符串字面量 `"..."` 的类型是 `str`（不定长）。由于 Riddle 支持 **unsized coercion**，`str` 字面量在赋值给 `&str` 时会自动强制转换：
+字符串字面量 `"..."` 的类型是 `&str`：
 
 ```riddle
-let s: &str = "hello";  // "hello" 的类型是 str，强制转换为 &str
+let s: &str = "hello";
 ```
 
 如果字符串内容里包含很多引号或反斜杠，可以使用 raw string。raw string 不解释转义，结束符由 `#` 的数量决定：
@@ -48,7 +48,7 @@ let c: &str = r###"content with "# inside"###;
 
 `#[lang = r#"copy"#]` 这类属性字符串也支持 raw string。
 
-## 函数中的 &str 使用
+## 函数中的 `&str`
 
 `&str` 可以自由地在函数之间传递——它只是一个胖指针值：
 
@@ -62,28 +62,30 @@ fun hello() -> &str {
 }
 
 fun main() {
-    greet("Riddle");  // 字面量自动强制为 &str
+    greet("Riddle");
     let msg = hello();
 }
 ```
 
 ## C backend 中的 `&str`
 
-通过 C 后端（`--backend c`）编译时，Riddle 内部的 `str` / `&str` 使用胖指针结构体：
+通过 C 后端（`--backend c`）编译时，Riddle 内部的 `&str` 使用胖指针结构体：
 
 ```c
 struct { const char* ptr; size_t len; }
 ```
 
-当 `str` 或 `&str` 作为外部 C 函数参数传出时，C backend 会取其中的 `ptr`，按 `const char*` 传给 C：
+当 `&str` 传给只有声明的外部 C 导入时，C backend 会取其中的 `ptr`，按 `const char*` 传给 C：
 
 ```riddle
-extern "C" fun puts(s: str) -> i32;
+extern "C" fun puts(s: &str) -> i32;
 
 fun main() {
     puts("hello from riddle via FFI!\n");
 }
 ```
+
+C 导入返回 `&str` 时，返回的 `const char*` 必须以 NUL 结尾，C backend 使用 `strlen` 恢复长度。带函数体的 `extern "C"` 导出定义则保留 `{ ptr, len }` 结构体 ABI。
 
 ### 与 Rust 的区别
 
@@ -92,14 +94,14 @@ fun main() {
 | `str` | DST，总是通过引用使用 | 不定长，总是通过引用使用 |
 | `&str` | 胖指针 `{ ptr, len }` | 胖指针 `{ ptr, len }` |
 | `String` | 堆分配的可增长字符串 | 暂无 |
-| 字面量类型 | `&'static str` | `str`（自动强制转换为 `&str`） |
+| 字面量类型 | `&'static str` | `&str` |
 | raw string | `r#"..."#` | `r#"..."#` |
 | 生命周期 | 需要标注生命周期 | 无生命周期标注，逃逸分析自动处理 |
-| C ABI | 需显式转换 `CStr` | 外部 C 参数中 `str` / `&str` 传为 `const char*` |
+| C ABI | 需显式转换 `CStr` | C 导入中的 `&str` 使用 `const char*`；导出定义保留胖指针结构体 |
 
 ## 内部表示
 
-在 MIR 和代码生成层面，`str` 和 `&str` 都表示为 16 字节的胖指针——ptr + len。类型检查层面将 `str` 标记为 unsized 以强制执行"必须通过引用使用"的规则，但底层运行时表示是相同的。
+在 MIR 和代码生成层面，`&str` 表示为 16 字节的胖指针——ptr + len。裸 `str` 没有独立的运行时值或布局。
 
 ```
 &str 的运行时布局:

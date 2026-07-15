@@ -1,17 +1,17 @@
 # Riddle 错误码参考
 
-## 类型检查 (E0001–E0013, E0031–E0042, E0072)
+## 类型检查 (E0001–E0013, E0031–E0043, E0072)
 
 ### E0001 — 类型不匹配
 赋值、函数参数、返回值的类型与预期不符。
 ```riddle
-let x: i32 = "hello";  // E0001: expected i32, got str
+let x: i32 = "hello";  // E0001: expected i32, got &str
 ```
 
 ### E0002 — 分支类型不兼容
 `if` 各分支或 `match` 各 arm 的返回类型不一致。
 ```riddle
-let x = if cond { 1 } else { "hello" };  // E0002: incompatible types: i32 and str
+let x = if cond { 1 } else { "hello" };  // E0002: incompatible types: i32 and &str
 ```
 
 ### E0003 — 需要数值类型
@@ -150,6 +150,13 @@ impl<T> Foo for T where Vec<T>: Foo {}  // E0037
 fun invalid() {
     break;  // E0042: `break` outside of a loop
 }
+```
+
+### E0043 — 不定长 `str` 用在值位置
+裸 `str` 没有独立布局，不能作为局部变量、参数、返回值、字段或其他值类型的组成部分。字符串值应使用 `&str`。
+```riddle
+let invalid: str = "hello";  // E0043
+let valid: &str = "hello";   // OK
 ```
 
 ### E0072 — 递归类型无限大小

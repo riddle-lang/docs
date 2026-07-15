@@ -243,7 +243,7 @@ let rm: &mut i32 = &mut x; // 可变引用
 | 类型 | 指针类别 | C 表示 |
 |------|---------|-----------------|
 | `&i32` | 瘦（8 字节） | `int32_t*` |
-| `&str` | 胖（16 字节） | 内部为 `struct { const char* ptr; size_t len; }`，传给外部 C 函数时为 `const char*` |
+| `&str` | 胖（16 字节） | 内部为 `struct { const char* ptr; size_t len; }`；C 导入边界使用 `const char*` |
 
 ## 定长与不定长类型
 
@@ -251,18 +251,14 @@ let rm: &mut i32 = &mut x; // 可变引用
 
 ### 不定长类型
 
-目前只有 `str` 是不定长的。不定长类型不能直接使用——必须放在引用或原始指针后面。
+目前只有 `str` 是不定长的。不定长类型不能作为局部变量、参数、返回值或普通字段，必须作为引用或原始指针的目标使用；裸 `str` 也可以作为 `impl` 的目标。
 
 ```riddle
 // let s: str = "hello";  // 错误: str 是不定长的
 let s: &str = "hello";    // 正确: &str 是胖指针
 ```
 
-`Sized` 概念确保栈分配、移动语义和调用约定始终处理已知大小。未来 `[T]`（切片）也将是不定长的。
-
-### `str` — 字符串切片类型
-
-`str` 是不定长的字符串类型。它表示一段编译期未知长度的合法 UTF-8 字节序列。详见 [字符串](./strings.md) 章节。
+`Sized` 概念确保栈分配、移动语义和调用约定始终处理已知大小。未来 `[T]`（切片）也将是不定长的。`str` 和 `&str` 的具体用法见 [字符串](./strings.md)。
 
 ## C ABI 映射
 
@@ -280,8 +276,8 @@ let s: &str = "hello";    // 正确: &str 是胖指针
 | `[T; N]` | C 数组，作为字段时写成 `T field[N]` |
 | `enum` | 带 `tag` 和 payload 字段的 C `struct` |
 | `&str`（Riddle 内部） | `struct { const char* ptr; size_t len; }` |
-| `str`（Riddle 内部） | `struct { const char* ptr; size_t len; }` |
-| `str` / `&str`（外部 C 函数参数） | `const char*` |
+| `&str`（C 导入参数/返回值） | `const char*` |
+| `&str`（带函数体的 C 导出定义） | `riddle_str { ptr, len }` |
 
 ## 属性
 

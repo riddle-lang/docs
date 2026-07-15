@@ -38,7 +38,7 @@ MIR（Mid-level IR）是 SSA 形式的中间表示，位于类型检查和代码
 - **类型转换**：`IntToInt`、`IntToFloat`、`FloatToInt`、`FloatToFloat`、`BoolToInt`、`IntToBool`；
 - **比较操作**：`Cmp` 支持 `Eq`、`Neq`、`Lt`、`Gt`、`LtEq`、`GtEq`。
 
-MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`、`Str`、`Never`、`Void`，并支持 `size_bytes()` 计算类型大小（区分瘦指针和胖指针）。
+MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`、`Str`、`Never`、`Void`，并为定长类型提供 `size_bytes()` 布局估算；裸 `Str` 没有独立大小。
 
 ### riddle-lsp
 
@@ -119,7 +119,8 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - 整数：`i8`、`i16`、`i32`、`i64`、`i128`、`isize`、`u8`、`u16`、`u32`、`u64`、`u128`、`usize`；
 - 浮点：`f16`、`f32`、`f64`、`f128`；
 - `bool`、`char`、`()`、`!`；
-- `str` 和 `&str`；
+- `str`：不定长字符串类型，仅能作为引用、原始指针或 `impl` 的目标；
+- `&str`：引用 `str` 的定长胖指针值；
 - 引用：`&T`、`&mut T`；
 - 原始指针类型：`*const T`、`*mut T`；
 - 元组类型；
@@ -214,15 +215,11 @@ prelude 直接提供 `Option`、`Result`、`Some`、`None`、`Ok`、`Err`、`Cop
 
 ### 字符串和 FFI
 
-- 普通字符串字面量 `"..."`；
-- raw string：`r"..."`、`r#"..."#`、`r###"..."###`；
-- `str` 不定长类型；
-- `&str` 胖指针；
-- 字符串字面量可赋给 `&str`；
-- C backend 中 `str` / `&str` 使用 `{ ptr, len }` 表示；
-- `extern "C" fun ...;`；
-- `extern "C" { fun ...; }`；
-- `extern "C" fun name(...) { ... }` 导出 C ABI 函数；
+- `str` 是不定长类型，不能作为局部变量、参数、返回值或普通字段；
+- `&str` 是 `{ ptr, len }` 胖指针，字符串字面量的类型也是 `&str`；
+- 字符串字面量支持 `"..."`、`r"..."`、`r#"..."#` 和 `r###"..."###`；
+- `extern "C"` 支持单函数声明、声明块和带函数体的导出定义；
+- C 导入中的 `&str` 映射为 `const char*`，带函数体的导出定义保留 `{ ptr, len }`；
 - C backend 内置 `str_len` 和 `str_byte` 两个字符串 helper。
 
 ## 后端状态
