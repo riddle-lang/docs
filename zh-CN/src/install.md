@@ -45,6 +45,8 @@ clue --version
 riddle-lsp --version
 ```
 
+需要实时诊断和语义高亮时，继续阅读[编辑器与 LSP](./editor-support.md)。
+
 当前命令行入口是 `riddlec`：
 
 ```bash

@@ -118,15 +118,7 @@ cargo run -p riddle-lsp
 - 注释（notes）提供上下文和修复建议；
 - 严重性分层：Error、Warning、Information、Hint。
 
-配置编辑器（以 VS Code 为例），在 LSP 客户端配置中添加：
-
-```json
-{
-    "languageServers": ["riddle-lsp"]
-}
-```
-
-或将 `riddle-lsp` 注册为 `.rid` 文件的 language server。
+仓库中的 `editors` 目录提供 Helix、VS Code 和 Zed 客户端。完整的安装、路径配置、验证步骤和故障排查见[编辑器与 LSP](./editor-support.md)。
 
 ## MIR 后端架构
 

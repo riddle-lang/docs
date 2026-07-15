@@ -51,8 +51,9 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - 诊断附带次要标签（related information）和注释（notes）；修复建议放在 `note:` 中，error 主消息只描述问题；
 - 诊断严重性层级：Error、Warning、Information、Hint；
 - 每次按键都运行完整编译流程；
+- 仓库内提供 Helix、VS Code 和 Zed 的 `.rid` 文件与 `riddle-lsp` 适配；
 
-编辑器配置示例见 [FFI 与工具链](./ffi-and-tooling.md)。
+安装和验证步骤见[编辑器与 LSP](./editor-support.md)。
 
 ## 当前语言特性
 

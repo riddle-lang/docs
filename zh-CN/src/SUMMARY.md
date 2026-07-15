@@ -4,6 +4,7 @@
 - [进入 Riddle 编程世界](./into-riddle.md)
 - [开始使用 Riddle](./start.md)
   - [安装 Riddle 环境](./install.md)
+  - [编辑器与 LSP](./editor-support.md)
   - [你好，Riddle](./hello-riddle.md)
 - [Riddle 基础](./basics.md)
   - [变量与可变性](./variables-and-mutability.md)
