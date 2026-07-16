@@ -4,13 +4,13 @@ Riddle 仍处于开发阶段。本页记录当前仓库已经实现并被测试�
 
 ## 编译流程
 
-`riddlec` 当前执行完整前端和基础后端流程：
+`riddlec` 可执行完整前端和基础后端流程：
 
-1. 增量词法分析和语法分析（`IncrementalParser`，缓存 token 以支持 LSP 重新解析）；
+1. 词法分析和语法分析（`IncrementalParser` 提供局部重解析 API）；
 2. AST 包装；
 3. HIR 降级（含 E0040/E0050/E0051/E0052 诊断）；
 4. 作用域图构建和名字解析（基于片段的增量作用域图，支持部分失效）；
-5. 类型检查（含增量缓存 `TypeCheckCache`）；
+5. 类型检查（含可复用的 `IncrementalTypeChecker`）；
 6. 逃逸分析（过程间不动点，决定局部值用栈分配还是 GC 堆分配）；
 7. move checker（移动后使用、借用冲突、借用期间赋值/移动检查）；
 8. HIR 到 MIR 降级（SSA 形式，Phi 节点，基本块，`Alloca`/`HeapAlloc` 分配指令）；
@@ -24,6 +24,8 @@ riddlec [--verbose] [--backend c] [--output <file>] <file>...
 
 `--backend c` 会生成 C 代码；如需可执行文件，再使用本机 `cc`、`gcc` 或 `clang` 编译生成结果。GC 运行时已经随生成代码内置，不需要额外链接 Boehm GC。
 
+不指定后端时，`riddlec` 在完成 move/borrow 检查后停止；只有生成后端代码时才继续降级 MIR。
+
 `riddlec` 会自动把 `std/lib.rid` 拼到用户源码后面，因此 `std::marker::Copy`、`std::clone::Clone` 和比较、运算 trait 不需要手动定义。
 
 ### MIR 中间表示
@@ -35,8 +37,9 @@ MIR（Mid-level IR）是 SSA 形式的中间表示，位于类型检查和代码
 - **分配指令**：`Alloca`（栈分配）和 `HeapAlloc`（GC 堆分配），由逃逸分析结果驱动；
 - **内存操作**：`Load`、`Store`、`FieldPtr`（字段指针）、`IndexPtr`（索引指针）、`ExtractValue`（提取聚合字段）；
 - **值构造**：`StructValue`、`SparseStructValue`、`ArrayValue`、`TupleValue`；枚举使用稀疏初始化保证不同变体的 payload 槽位稳定；
-- **类型转换**：`IntToInt`、`IntToFloat`、`FloatToInt`、`FloatToFloat`、`BoolToInt`、`IntToBool`；
+- **类型转换**：`IntToInt`、`IntToFloat`、`FloatToInt`、`FloatToFloat`、`BoolToInt`、`IntToBool`、`IntToPtr`、`PtrToPtr`；
 - **比较操作**：`Cmp` 支持 `Eq`、`Neq`、`Lt`、`Gt`、`LtEq`、`GtEq`。
+- **函数值**：可调用值统一为 `{ call, env }`，`FunctionRef` 取得隐藏函数或命名函数适配器地址，`CallIndirect` 传入环境后调用；捕获匿名函数的环境使用 GC 堆分配。
 
 MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`、`Str`、`Never`、`Void`，并为定长类型提供 `size_bytes()` 布局估算；裸 `Str` 没有独立大小。
 
@@ -47,10 +50,11 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - 完整的诊断流水线：解析错误、HIR 诊断、类型检查错误、move/escape 分析诊断全部通过 LSP 推送；
 - 全文本同步（`TextDocumentSyncKind::FULL`）；
 - UTF-16 位置编码（正确处理多字节字符如 emoji）；
-- 语义 Token（`textDocument/semanticTokens/full`），包含词法高亮和 HIR 局部变量 `declaration` / `mutable` 标记；
-- 诊断附带次要标签（related information）和注释（notes）；修复建议放在 `note:` 中，error 主消息只描述问题；
+- 语义 Token（`textDocument/semanticTokens/full`），包含词法高亮、参数 `declaration` 和可变局部变量 `declaration` / `mutable` 标记；
+- 诊断区分主标签和次要标签（related information），错误码可跳转到错误码手册，注释和修复建议分别以 `note:` / `help:` 附加；
+- Clue 项目按原始文件 URI 发布诊断，包括未打开模块，并在重新分析后清理过期诊断；
 - 诊断严重性层级：Error、Warning、Information、Hint；
-- 每次按键都运行完整编译流程；
+- 文档变更会先合并短时间内的连续输入，再在后台运行诊断并丢弃过期结果；未变化的文件和无关 Clue 项目直接复用诊断，变化的分析单元复用增量语法树、函数体和全局类型检查缓存，在声明、overlay、磁盘源码或 manifest 变化时保守失效；诊断在 move/borrow 检查后停止，不生成 MIR；UTF-16 位置通过行索引换算，语义 Token 只解析当前文件并降级 HIR，并按文档文本缓存；
 - 仓库内提供 Helix、VS Code 和 Zed 的 `.rid` 文件与 `riddle-lsp` 适配；
 
 安装和验证步骤见[编辑器与 LSP](./editor-support.md)。
@@ -73,6 +77,8 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 
 - `let` 绑定，默认不可变；
 - `let mut` 可变绑定；
+- `fun(x) { x + 1 }` 匿名函数、结构化函数类型、单态参数推断和闭包捕获；
+- 按用法推断共享、可变和值捕获，并据此检查 `Fn`、`FnMut`、`FnOnce` 调用能力；
 - 显式类型标注；
 - 顶层和 `impl` 内的 `const` 声明（`const NAME: Type = value;`）；
 - 顶层、`impl` 和 `trait` 内的 `type` 别名（含默认关联类型）；
@@ -214,6 +220,8 @@ prelude 直接提供 `Option`、`Result`、`Some`、`None`、`Ok`、`Err`、`Cop
 - 字段访问本身不会移动整个结构体；
 - 数组元素和结构体字段按值移动；
 - 引用逃逸分析决定局部值使用栈分配还是 GC 堆分配。
+- 共享/可变闭包捕获会让对应局部逃逸，但堆分配不会放宽移动和借用检查；
+- 非 `Copy` 值捕获会在创建闭包时移动该值，`FnOnce` 闭包调用后不可再次使用。
 
 ### 字符串和 FFI
 
@@ -237,7 +245,7 @@ C backend 实现统一的 `Backend` trait：`compile(&mut self, module: &Module)
 | 工具 | 状态 |
 |------|------|
 | `riddlec` | 编译器 CLI，支持前端检查、MIR 降级和 C backend |
-| `riddle-lsp` | LSP 服务器，基于 `tower-lsp`，每次按键运行完整编译流程，刷新所有已打开文档的诊断，并提供语义 Token |
+| `riddle-lsp` | LSP 服务器，基于 `tower-lsp`，并发处理请求，按分析单元增量刷新诊断，并缓存当前文档的轻量语义 Token 结果 |
 | `clue` | 项目构建器，支持 `init` 和 `build`，会展开外部模块、解析本地 path 依赖，并输出 `.clue/build/<package>.c` |
 
 ## 当前限制
@@ -251,4 +259,5 @@ C backend 实现统一的 `Backend` trait：`compile(&mut self, module: &Module)
 - 字段级可见性尚未做类型检查约束；
 - C backend 的输出需要外部 C 编译器才能生成本机可执行文件；
 - 逃逸分析当前粒度是整个局部变量，不做字段级拆分；
+- 闭包当前按整个绑定捕获，不做字段级精确捕获；模式绑定跨入闭包仍会报告 E0044；
 - 这是开发中工具链，不保证语法和 ABI 稳定。

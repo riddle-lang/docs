@@ -107,13 +107,16 @@ unsafe_expr = "unsafe" block;
 
 expr_without_block = unary (("as" ty) | (binop unary))*;
 
+lambda_expr = "fun" "(" (lambda_param ("," lambda_param)*)? ")" ("->" ty)? block;
+lambda_param = ident (":" ty)?;
+
 unary = prefix_op unary | postfix;
 
 postfix = primary ( "(" arg_list ")" | "." ident | "[" expression "]" | struct_expr_fields | "." ident "(" arg_list ")" )*;
 
 arg_list = (expression ("," expression)*)?;
 
-primary = literal | path | array_expr | "(" expression? ")";
+primary = literal | path | array_expr | lambda_expr | "(" expression? ")";
 
 array_expr = "[" "]"
            | "[" expression ("," expression)* ","? "]"
@@ -166,6 +169,7 @@ ty = attribute* (
    | "*" ("const" | "mut") ty
    | "[" ty ";" expression "]"
    | int_lit
+   | "fun" "(" type_list? ")" ("->" ty)?
    | "(" (ty ("," ty)* ","?)? ")"
    );
 
