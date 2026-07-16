@@ -196,7 +196,7 @@ prelude 直接提供 `Option`、`Result`、`Some`、`None`、`Ok`、`Err`、`Cop
 - `std::marker::Copy`；
 - `std::clone::Clone`；
 - `std::cmp::{Ordering, PartialEq, Eq, PartialOrd, Ord}`；
-- `std::ops` 下的算术、位运算、移位和复合赋值 trait，均有可调用的必需方法。
+- `std::ops` 下的算术、位运算、移位和复合赋值 trait，均有可调用的必需方法；这些 trait 由对应 `#[lang = "..."]` 标记，其标量 impl 作为编译器内置运算。
 
 `Default` 需要按具体 `Self` 调用关联 trait 函数，格式化和哈希还需要对应运行时协议；这些能力尚未实现，因此 std 不再暴露只有名字、没有行为的占位 trait。
 
@@ -204,10 +204,12 @@ prelude 直接提供 `Option`、`Result`、`Some`、`None`、`Ok`、`Err`、`Cop
 
 - `#[lang = "copy"]`：被它标记的 `Copy` trait 会被 move checker 用来决定用户类型是否按复制语义处理；
 - `#[lang = "add"]`：非数值类型的 `+` 会分派到 `Add::add`；
+- `#[lang = "add"]` 到 `#[lang = "shr"]`：标量 impl 的算术、一元、位运算和移位方法直接降为 MIR 运算；
+- `#[lang = "add_assign"]` 到 `#[lang = "shr_assign"]`：标量 impl 的复合赋值方法直接降为 MIR 的读取、运算和写回；
 - `#[lang = "partial_eq"]`：用户类型使用 `==` / `!=` 时需要满足 `PartialEq`；
 - `#[lang = "partial_ord"]`：用户类型使用 `<`、`>`、`<=`、`>=` 时需要满足 `PartialOrd`。
 
-`Clone::clone`、`PartialEq::eq`、`PartialOrd::partial_cmp`、`Ord::cmp` 和各运算 trait 方法可以直接调用。除 `Add` 外，用户类型的运算符重载尚未接入这些 trait；标量运算符仍由编译器内建处理。
+`Clone::clone`、`PartialEq::eq`、`PartialOrd::partial_cmp`、`Ord::cmp` 和各运算 trait 方法可以直接调用。带受支持 lang 标记的标量运算方法不会生成 `add__i64` 一类 C 包装函数，而是生成原生 C 运算表达式。未标记的同名 trait 和用户类型 impl 仍按普通方法编译。除 `Add` 外，用户类型的运算符重载尚未接入这些 trait。
 
 ### 所有权、移动和逃逸
 
@@ -239,6 +241,8 @@ prelude 直接提供 `Option`、`Result`、`Some`、`None`、`Ok`、`Err`、`Cop
 | C backend | CLI 可用：`--backend c`。输出包含内置 `rgc` 运行时，不需要外部 GC 库 |
 
 C backend 实现统一的 `Backend` trait：`compile(&mut self, module: &Module) -> Result<String, Error>`。
+
+C backend 会把标量 std 运算 trait 的显式方法调用直接输出为 `+`、`-`、`*`、`&`、`<<` 等 C 运算，不声明或定义对应的 primitive wrapper；用户类型的 trait 方法仍输出普通 C 函数。
 
 ## 工具状态
 

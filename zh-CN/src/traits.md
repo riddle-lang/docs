@@ -170,6 +170,27 @@ fun main() {
 - `PartialEq`、`Eq`、`PartialOrd`、`Ord`；
 - `Add`、`Sub`、`Mul`、`Div`、`Rem`、`Neg`、`Not`、位运算、移位和复合赋值 trait，均提供对应必需方法。
 
+运算 trait 的 lang 标记同时是 std 和编译器之间的内建契约。例如，`std/std/ops.rid` 中包含：
+
+```riddle
+#[lang = "add"]
+trait Add {
+    type Output;
+    fun add(self, rhs: Self) -> Self::Output;
+}
+```
+
+普通代码直接调用 std 提供的标量 impl：
+
+```riddle
+fun main() -> i32 {
+    let left: i32 = 1;
+    left.add(2)
+}
+```
+
+对于 `i32` 等标量，`left.add(2)` 会直接降为 MIR `Add`，C backend 输出等价的 `left + 2`，不会生成或调用 `add__i32` 包装函数。一元运算、位运算、移位和 `add_assign` 等复合赋值方法遵循相同规则。只有带受支持 `#[lang = "..."]` 标记的 trait 的标量 impl 会开洞；未标记的同名 trait 和结构体等用户类型 impl 仍保留普通方法调用。
+
 `PartialEq::eq`、`PartialOrd::partial_cmp` 和 `Ord::cmp` 可以作为普通方法调用；整数、字符和布尔值返回 `Ordering`，浮点比较遇到 NaN 时返回 `None`。当前编译器会使用 `#[lang = "add"]` 的 `Add` 为非数值类型分派 `+`，并用 `Output` 关联类型决定结果类型。`PartialEq` 会参与 `==` / `!=` 检查，`PartialOrd` 会参与 `<`、`>`、`<=`、`>=` 检查。其他用户类型运算符重载尚未接入对应 trait，但 trait 方法本身可以直接调用。
 
 Riddle 尚不支持 trait 默认方法，所以 `Iterator` 目前只有 `next` 核心协议，没有 Rust 的 `map`、`filter` 等默认适配器。`Default` 的关联 trait 函数调用、格式化器和哈希器协议也尚未实现；std 不再为这些能力暴露空壳 trait。浮点余数同样暂未支持，`Rem` 和 `RemAssign` 只为整数实现。
