@@ -1,17 +1,18 @@
 # Clue 构建器
 
-`clue` 是 Riddle 当前的项目构建器。它提供四个命令：
+`clue` 是 Riddle 当前的项目构建器。它提供五个命令：
 
 ```bash
 clue init [--bin|--lib] <path>
 clue new [--bin|--lib] <path>
 clue check [path]
 clue build [path]
+clue run [path] [-- <args>...]
 ```
 
-`clue init` 在指定目录中初始化项目，`clue new` 创建新目录和项目；二者都会生成清单、入口源码和忽略文件。它们不会覆盖已有的 `Clue.toml` 或目标入口源码。`clue check` 检查整个项目但不生成 C，`clue build` 检查项目后生成 C 源码。
+`clue init` 在指定目录中初始化项目，`clue new` 创建新目录和项目；二者都会生成清单、入口源码和忽略文件。它们不会覆盖已有的 `Clue.toml` 或目标入口源码。`clue check` 检查整个项目但不生成 C，`clue build` 构建项目，`clue run` 先构建二进制项目再运行生成的程序。
 
-Clue 适合把多文件 Riddle 程序放进一个项目目录里构建。它不会替代 `riddlec` 的所有参数：当前输出固定为 `.clue/build/<package-name>.c`，也不会继续调用 C 编译器生成本机可执行文件。
+二进制项目会保留 `.clue/build/<package-name>.c`，并在同一目录生成 `<package-name>`；Windows 下扩展名为 `.exe`。Clue 优先使用 `CC` 指定的编译器，否则依次探测 `cc`、`gcc`、`clang`，Windows 还会探测 `clang-cl` 和 `cl`。库项目仍只生成 C 源码，不会链接可执行文件。
 
 ## 项目布局
 
@@ -97,14 +98,23 @@ Clue 会展开入口文件声明的外部模块和所有本地 path 依赖，再
 
 ## 构建缓存
 
-Clue 会缓存构建指纹。`Clue.toml`、展开后的源码或当前编译器版本发生变化时会重新生成 C 源码；没有变化时会输出 `fresh`。
+Clue 会缓存构建指纹。`Clue.toml`、展开后的源码、当前 Riddle 编译器版本、目标平台或 C 编译器选择发生变化时会重新构建；没有变化且输出文件仍存在时会输出 `fresh`。
+
+## 运行项目
+
+```bash
+clue run
+clue run path/to/project -- arg1 arg2
+```
+
+`run` 只接受二进制项目，并把 `--` 后的参数原样传给程序。程序退出码会成为 `clue run` 的退出码。
 
 ## 作为 Rust 库使用
 
 `clue` crate 公开项目创建、检查、构建和项目分析 API。
 
 ```rust
-use clue::{ProjectKind, build, check, new};
+use clue::{ProjectKind, build, check, new, run};
 use std::path::Path;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -112,6 +122,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     new(root, ProjectKind::Binary)?;
     check(root)?;
     build(root)?;
+    run(root, &[])?;
     Ok(())
 }
 ```
@@ -121,5 +132,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## 当前限制
 
 - 只支持 Cargo 风格的本地 path 依赖，不支持 registry、版本解析、git 依赖或 lockfile；
-- 输出固定为 C 源码文件；
-- 运行生成的 C 程序仍需使用系统 C 编译器，或直接使用 `riddlec --backend c`。
+- 库目标当前只输出 C 源码，不生成静态库或动态库；
+- 二进制构建和运行需要系统中存在受支持的 C 编译器。

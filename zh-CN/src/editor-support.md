@@ -12,9 +12,31 @@ riddle-lsp --version
 
 如果命令不可用，请把 Riddle 二进制目录加入 `PATH`，或在编辑器配置中填写 `riddle-lsp` 的绝对路径。三个适配都会识别 `.rid` 文件；打开 Clue 项目时，服务器会向上查找 `Clue.toml` 并加载项目模块和本地依赖。
 
+## 打包编辑器扩展
+
+在仓库根目录运行 PowerShell 或 Bash 脚本：
+
+```powershell
+pwsh -File editors\package.ps1
+```
+
+```bash
+bash editors/package.sh
+```
+
+脚本需要 Node.js、npm 和网络连接，Bash 版本还需要 `zip` 命令。它会安装 VS Code 扩展的构建依赖，并在 `editors/dist` 中生成：
+
+| 文件 | 用途 |
+|------|------|
+| `riddle-vscode.vsix` | 直接导入 VS Code |
+| `riddle-helix.zip` | 解压后合并到 Helix 配置目录 |
+| `riddle-zed.zip` | 解压后作为 Zed Dev Extension 导入 |
+
+Helix 和 Zed 没有与 VSIX 等价的本地安装包，因此对应 ZIP 只负责分发所需文件；导入方式见下文。
+
 ## Helix
 
-仓库中的 Helix 适配位于 `editors/helix`：
+解压 `editors/dist/riddle-helix.zip`。压缩包内容与仓库中的 `editors/helix` 相同：
 
 ```text
 editors/helix/
@@ -22,8 +44,8 @@ editors/helix/
 └── runtime/queries/riddle/
 ```
 
-1. 把 `editors/helix/languages.toml` 的两个配置块合并到 Helix 配置目录的 `languages.toml`。已有文件时不要直接覆盖。
-2. 把 `editors/helix/runtime/queries/riddle` 复制到 Helix 配置目录的 `runtime/queries/riddle`。
+1. 把解压目录中 `languages.toml` 的两个配置块合并到 Helix 配置目录的 `languages.toml`。已有文件时不要直接覆盖。
+2. 把解压目录中的 `runtime/queries/riddle` 复制到 Helix 配置目录的 `runtime/queries/riddle`。
 3. 重新启动 Helix。
 
 Helix 配置目录通常是：
@@ -33,7 +55,7 @@ Helix 配置目录通常是：
 | Linux / macOS | `~/.config/helix` |
 | Windows | `%AppData%\helix` |
 
-查询文件可以这样复制：
+直接从仓库导入时，查询文件可以这样复制：
 
 ```bash
 mkdir -p ~/.config/helix/runtime/queries/riddle
@@ -66,16 +88,15 @@ hx --health riddle
 
 ## VS Code
 
-VS Code 适配是 `editors/vscode` 中的本地扩展，包含 `.rid` 文件注册、基础 TextMate 高亮和 LSP 客户端。当前尚未发布到 Marketplace，需要从仓库打包安装。
+VS Code 适配包含 `.rid` 文件注册、基础 TextMate 高亮和 LSP 客户端。当前尚未发布到 Marketplace，需要安装本地 VSIX。
 
-先安装 Node.js，再执行：
+命令行安装打包脚本生成的扩展：
 
-```bash
-cd editors/vscode
-npm install
-npx @vscode/vsce package
-code --install-extension riddle-0.1.0.vsix
+```powershell
+code --install-extension editors\dist\riddle-vscode.vsix
 ```
+
+也可以打开扩展面板，在右上角 `...` 菜单中选择 **Install from VSIX...**，然后选择 `riddle-vscode.vsix`。
 
 安装完成后重新打开 `.rid` 文件。右下角的语言模式应显示 `Riddle`。
 
@@ -100,11 +121,11 @@ Windows 路径中的反斜杠需要转义：
 
 ## Zed
 
-Zed 适配位于 `editors/zed`，当前以 Dev Extension 方式安装：
+Zed 适配当前以 Dev Extension 方式安装。先把 `riddle-zed.zip` 解压到固定目录，并确认该目录顶层包含 `extension.toml`，然后：
 
 1. 在命令面板运行 **zed: extensions**。
 2. 选择 **Install Dev Extension**。
-3. 选择仓库中的 `editors/zed` 目录。
+3. 选择刚才解压的目录；直接从仓库导入时选择 `editors/zed`。
 4. 重新打开 `.rid` 文件，并确认语言模式为 `Riddle`。
 
 扩展默认从工作树的 `PATH` 查找 `riddle-lsp`。也可以在 Zed 的 `settings.json` 中指定路径、参数，并启用完整语义 Token：

@@ -188,8 +188,9 @@ match value {
 
 prelude 直接提供 `Option`、`Result`、`Some`、`None`、`Ok`、`Err`、`Copy`、`Clone`、比较 trait 和迭代协议。
 
-- `std::option::Option<T>`；
-- `std::result::Result<T, E>`；
+- `std::option::Option<T>`，提供 `is_some`、`is_none`、`unwrap_or` 和 `or`；
+- `std::result::Result<T, E>`，提供 `is_ok`、`is_err`、`unwrap_or`、`ok` 和 `err`；
+- `std::string` 为 `str` 提供 `len`、`is_empty` 和返回 `Option<u8>` 的 `byte_at`；
 - `std::iter::{Iterator, IntoIterator}`；
 - `std::array` 中的数组迭代器，并兼容重导出为 `ArrayIter<T, const N>`；
 - `std::ops::{Range, range(start, end)}`；
@@ -250,7 +251,7 @@ C backend 会把标量 std 运算 trait 的显式方法调用直接输出为 `+`
 |------|------|
 | `riddlec` | 编译器 CLI，支持前端检查、MIR 降级和 C backend |
 | `riddle-lsp` | LSP 服务器，基于 `tower-lsp`，并发处理请求，按分析单元增量刷新诊断，并缓存当前文档的轻量语义 Token 结果 |
-| `clue` | 项目构建器，支持 `init` 和 `build`，会展开外部模块、解析本地 path 依赖，并输出 `.clue/build/<package>.c` |
+| `clue` | 项目构建器，支持 `init`、`new`、`check`、`build` 和 `run`；二进制项目会保留 C 并生成本机可执行文件，库项目只输出 C |
 
 ## 当前限制
 
@@ -261,7 +262,7 @@ C backend 会把标量 std 运算 trait 的显式方法调用直接输出为 `+`
 - 显式泛型函数调用和显式泛型结构体构造表达式还不支持，例如 `f::<T>()`、`Type::<T> { ... }`；
 - 泛型目前偏向单态化，尚未覆盖完整 Rust 泛型能力；
 - 字段级可见性尚未做类型检查约束；
-- C backend 的输出需要外部 C 编译器才能生成本机可执行文件；
+- `riddlec` 的 C backend 只输出 C；`clue build` 会调用 `CC` 或探测到的系统 C 编译器生成本机可执行文件；
 - 逃逸分析当前粒度是整个局部变量，不做字段级拆分；
 - 闭包当前按整个绑定捕获，不做字段级精确捕获；模式绑定跨入闭包仍会报告 E0044；
 - 这是开发中工具链，不保证语法和 ABI 稳定。

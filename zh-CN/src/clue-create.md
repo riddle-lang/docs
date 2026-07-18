@@ -137,20 +137,31 @@ pub fun one() -> i32 {
 
 ## 输出文件
 
-当前输出是 C 源码，路径为：
+二进制项目会保留生成的 C 源码，并输出本机可执行文件：
 
 ```text
 .clue/build/<package-name>.c
+.clue/build/<package-name>       # Linux/macOS
+.clue/build/<package-name>.exe   # Windows
 ```
 
 构建成功时会输出：
 
 ```text
-clue: built .clue/build/hello.c
+clue: built .clue/build/hello.exe
 ```
 
-源码、`Clue.toml` 和编译器版本都没变化时，再次运行会复用缓存：
+实际路径会随平台变化。源码、`Clue.toml`、编译器版本和 C 编译器选择都没变化时，再次运行会复用缓存：
 
 ```text
-clue: fresh .clue/build/hello.c
+clue: fresh .clue/build/hello.exe
 ```
+
+库项目只生成 `.clue/build/<package-name>.c`。二进制项目可以直接运行：
+
+```bash
+clue run hello
+clue run hello -- arg1 arg2
+```
+
+Clue 优先使用 `CC` 指定的 C 编译器，否则探测系统中的 `cc`、`gcc`、`clang`、`clang-cl` 或 `cl`。
