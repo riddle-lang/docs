@@ -186,11 +186,12 @@ match value {
 
 当前标准库会自动拼到用户源码后面，根部通过 prelude 重导出常用项，同时按 Rust 风格分模块定义：
 
-prelude 直接提供 `Option`、`Result`、`Some`、`None`、`Ok`、`Err`、`Copy`、`Clone`、比较 trait 和迭代协议。
+prelude 直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`、`Ok`、`Err`、`Copy`、`Clone`、比较 trait 和迭代协议。
 
 - `std::option::Option<T>`，提供 `is_some`、`is_none`、`unwrap_or` 和 `or`；
 - `std::result::Result<T, E>`，提供 `is_ok`、`is_err`、`unwrap_or`、`ok` 和 `err`；
-- `std::string` 为 `str` 提供 `len`、`is_empty` 和返回 `Option<u8>` 的 `byte_at`；
+- `std::string::String` 提供 `new`、`from_str`、`as_str`、`len`、`capacity`、`is_empty`、`push_str` 和 `clear`；同一模块为 `str` 提供 `len`、`is_empty` 和返回 `Option<u8>` 的 `byte_at`；
+- `std::vector::Vector<T>` 提供 `new`、`len`、`capacity`、`is_empty`、`push`、`pop`、`get`、`get_mut`、`clear` 和按值迭代；
 - `std::iter::{Iterator, IntoIterator}`；
 - `std::array` 中的数组迭代器，并兼容重导出为 `ArrayIter<T, const N>`；
 - `std::ops::{Range, range(start, end)}`；

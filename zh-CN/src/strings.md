@@ -67,6 +67,38 @@ fun main() {
 }
 ```
 
+## 常用方法
+
+`&str` 通过标准库提供字节长度、空值判断和带边界检查的字节访问：
+
+```riddle
+let text: &str = "hello";
+let length = text.len();             // 5usize
+let empty = text.is_empty();         // false
+let first = text.byte_at(0usize);    // Some(104u8)
+let missing = text.byte_at(5usize);  // None
+```
+
+`len` 返回 UTF-8 字节数，不是字符数。`byte_at` 返回 `Option<u8>`，索引越界时返回 `None`。
+
+## 可增长的 `String`
+
+`String` 是由 GC 管理的 UTF-8 字节缓冲区，可以从 `&str` 创建并继续追加字符串切片：
+
+```riddle
+let mut text = String::from_str("hello");
+text.push_str(" world");
+
+let length = text.len();       // 11usize
+let view = text.as_str();      // "hello world"
+let capacity = text.capacity();
+
+text.clear();
+let empty = text.is_empty();   // true
+```
+
+`String::new()` 创建空字符串。`as_str()` 返回指向当前缓冲区的 `&str`；后续修改 `String` 前不应继续使用旧视图。
+
 ## C backend 中的 `&str`
 
 通过 C 后端（`--backend c`）编译时，Riddle 内部的 `&str` 使用胖指针结构体：
@@ -93,7 +125,7 @@ C 导入返回 `&str` 时，返回的 `const char*` 必须以 NUL 结尾，C bac
 |------|------|--------|
 | `str` | DST，总是通过引用使用 | 不定长，总是通过引用使用 |
 | `&str` | 胖指针 `{ ptr, len }` | 胖指针 `{ ptr, len }` |
-| `String` | 堆分配的可增长字符串 | 暂无 |
+| `String` | 堆分配的可增长字符串 | GC 管理的可增长 UTF-8 字节缓冲区 |
 | 字面量类型 | `&'static str` | `&str` |
 | raw string | `r#"..."#` | `r#"..."#` |
 | 生命周期 | 需要标注生命周期 | 无生命周期标注，逃逸分析自动处理 |

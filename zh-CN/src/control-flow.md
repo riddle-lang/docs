@@ -85,10 +85,11 @@ fun sum_to_three() -> i32 {
 }
 ```
 
-标准库提供了两个常用可迭代值：
+标准库提供了三个常用可迭代值：
 
 - `range(start, end)` 产生半开区间 `[start, end)`；
-- 固定长度数组 `[T; N]` 会通过 `ArrayIter<T, N>` 逐个按值产出元素，元素类型不需要实现 `Copy`。
+- 固定长度数组 `[T; N]` 会通过 `ArrayIter<T, N>` 逐个按值产出元素，元素类型不需要实现 `Copy`；
+- `Vector<T>` 会在循环中按值产出当前保存的元素并消耗向量。
 
 ```riddle
 fun use_array() -> i32 {
