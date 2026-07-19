@@ -50,12 +50,13 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - 完整的诊断流水线：解析错误、HIR 诊断、类型检查错误、move/escape 分析诊断全部通过 LSP 推送；
 - 全文本同步（`TextDocumentSyncKind::FULL`）；
 - UTF-16 位置编码（正确处理多字节字符如 emoji）；
-- 语义 Token（`textDocument/semanticTokens/full`），包含词法高亮、参数 `declaration` 和可变局部变量 `declaration` / `mutable` 标记；
+- 补全（`textDocument/completion`），支持当前文档中的关键字、内置类型、全局项、函数参数和局部变量，并根据推导类型提供字段与实例方法，根据 `::` 提供枚举变体、关联函数和公开标准库导入；
+- 语义 Token（`textDocument/semanticTokens/full`），内置类型使用 `keyword`，区分自由函数、方法、struct、enum 和 trait，关联函数使用 `method` / `static`，标准库符号使用 `defaultLibrary`，并包含函数、参数和方法 `declaration` 及可变局部变量 `declaration` / `mutable` 标记；
 - 诊断区分主标签和次要标签（related information），错误码可跳转到错误码手册，注释和修复建议分别以 `note:` / `help:` 附加；
 - Clue 项目按原始文件 URI 发布诊断，包括未打开模块，并在重新分析后清理过期诊断；
 - 诊断严重性层级：Error、Warning、Information、Hint；
 - 文档变更会先合并短时间内的连续输入，再在后台运行诊断并丢弃过期结果；未变化的文件和无关 Clue 项目直接复用诊断，变化的分析单元复用增量语法树、函数体和全局类型检查缓存，在声明、overlay、磁盘源码或 manifest 变化时保守失效；诊断在 move/borrow 检查后停止，不生成 MIR；UTF-16 位置通过行索引换算，语义 Token 只解析当前文件并降级 HIR，并按文档文本缓存；
-- 仓库内提供 Helix、VS Code 和 Zed 的 `.rid` 文件与 `riddle-lsp` 适配；
+- 仓库内提供 Helix、VS Code、Zed 和 IntelliJ IDEA 2026.2+ 的 `.rid` 文件与 `riddle-lsp` 适配；
 
 安装和验证步骤见[编辑器与 LSP](./editor-support.md)。
 
@@ -251,7 +252,7 @@ C backend 会把标量 std 运算 trait 的显式方法调用直接输出为 `+`
 | 工具 | 状态 |
 |------|------|
 | `riddlec` | 编译器 CLI，支持前端检查、MIR 降级和 C backend |
-| `riddle-lsp` | LSP 服务器，基于 `tower-lsp`，并发处理请求，按分析单元增量刷新诊断，并缓存当前文档的轻量语义 Token 结果 |
+| `riddle-lsp` | LSP 服务器，基于 `tower-lsp`，提供当前文档补全，并发处理请求，按分析单元增量刷新诊断，并缓存当前文档的轻量语义 Token 结果 |
 | `clue` | 项目构建器，支持 `init`、`new`、`check`、`build` 和 `run`；二进制项目会保留 C 并生成本机可执行文件，库项目只输出 C |
 
 ## 当前限制

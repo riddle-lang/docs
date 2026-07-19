@@ -1,6 +1,6 @@
 # 编辑器与 LSP
 
-Riddle 通过 `riddle-lsp` 为编辑器提供实时诊断和语义高亮。当前仓库提供 Helix、VS Code 和 Zed 的适配文件。
+Riddle 通过 `riddle-lsp` 为编辑器提供实时诊断、补全和语义高亮。当前仓库提供 Helix、VS Code、Zed 和 IntelliJ IDEA 2026.2+ 的适配文件。
 
 ## 准备 riddle-lsp
 
@@ -10,7 +10,7 @@ Riddle 通过 `riddle-lsp` 为编辑器提供实时诊断和语义高亮。当�
 riddle-lsp --version
 ```
 
-如果命令不可用，请把 Riddle 二进制目录加入 `PATH`，或在编辑器配置中填写 `riddle-lsp` 的绝对路径。三个适配都会识别 `.rid` 文件；打开 Clue 项目时，服务器会向上查找 `Clue.toml` 并加载项目模块和本地依赖。
+如果命令不可用，请把 Riddle 二进制目录加入 `PATH`，或在支持路径设置的编辑器中填写 `riddle-lsp` 的绝对路径。JetBrains 插件当前固定从 IDE 进程的 `PATH` 启动服务器。四个适配都会识别 `.rid` 文件；打开 Clue 项目时，服务器会向上查找 `Clue.toml` 并加载项目模块和本地依赖。
 
 ## 打包编辑器扩展
 
@@ -24,15 +24,16 @@ pwsh -File editors\package.ps1
 bash editors/package.sh
 ```
 
-脚本需要 Node.js、npm 和网络连接，Bash 版本还需要 `zip` 命令。它会安装 VS Code 扩展的构建依赖，并在 `editors/dist` 中生成：
+脚本需要 Node.js、npm、JDK 21 或更高版本和网络连接，Bash 版本还需要 `zip` 命令。首次构建 JetBrains 插件时，Gradle wrapper 会下载 Gradle 9 和 IntelliJ Platform 2026.2 SDK。脚本会在 `editors/dist` 中生成：
 
 | 文件 | 用途 |
 |------|------|
 | `riddle-vscode.vsix` | 直接导入 VS Code |
+| `riddle-intellij.zip` | 从磁盘安装到受支持的 JetBrains IDE |
 | `riddle-helix.zip` | 解压后合并到 Helix 配置目录 |
 | `riddle-zed.zip` | 解压后作为 Zed Dev Extension 导入 |
 
-Helix 和 Zed 没有与 VSIX 等价的本地安装包，因此对应 ZIP 只负责分发所需文件；导入方式见下文。
+JetBrains ZIP 和 VSIX 可以直接安装。Helix 和 Zed 的 ZIP 只负责分发所需文件；导入方式见下文。
 
 ## Helix
 
@@ -119,6 +120,26 @@ Windows 路径中的反斜杠需要转义：
 
 修改服务器路径或参数后，执行 **Developer: Reload Window** 重新启动扩展。
 
+## IntelliJ IDEA
+
+插件使用 IntelliJ Platform 2026.2 的 LSP integration API，源码全部为 Kotlin。IntelliJ IDEA 各版本均可使用；Android Studio 不在当前支持范围内。
+
+1. 打开 **Settings | Plugins**。
+2. 点击齿轮菜单，选择 **Install Plugin from Disk...**。
+3. 选择 `editors/dist/riddle-intellij.zip`，然后重新启动 IDE。
+4. 打开 `.rid` 文件，确认文件类型显示为 `Riddle`，并检查诊断、补全和语义高亮。
+
+插件不向 `riddle-lsp` 传递额外参数，并固定从 IDE 进程的 `PATH` 查找命令。修改系统 `PATH` 后需要完全退出并重新启动 IDE。JetBrains 适配没有 TextMate 或 Tree-sitter 回退；没有启动 LSP 时不会出现 Riddle 语义高亮。
+
+只构建这个插件时，可以运行：
+
+```powershell
+Set-Location editors\intellij
+.\gradlew.bat buildPlugin
+```
+
+生成的版本化 ZIP 位于 `editors/intellij/build/distributions`。
+
 ## Zed
 
 Zed 适配当前以 Dev Extension 方式安装。先把 `riddle-zed.zip` 解压到固定目录，并确认该目录顶层包含 `extension.toml`，然后：
@@ -154,12 +175,15 @@ Zed 适配当前以 Dev Extension 方式安装。先把 `riddle-zed.zip` 解压�
 
 | 能力 | 状态 |
 |------|------|
-| `.rid` 文件识别 | Helix、VS Code、Zed 均支持 |
+| `.rid` 文件识别 | Helix、VS Code、Zed、JetBrains 均支持 |
 | Clue 项目、未保存文件和未打开模块诊断 | 支持 |
 | 解析、类型、move/borrow 诊断 | 支持 |
-| 函数、类型、参数和可变绑定语义高亮 | 支持 |
-| 补全、Hover、跳转定义、查找引用 | 尚未实现 |
-| 重命名、格式化、Code Action | 尚未实现 |
+| 函数、方法、struct、enum、trait、参数和可变绑定语义高亮 | 支持 |
+| 当前文档中的关键字、类型、全局项和局部变量补全 | 支持 |
+| 字段、实例方法、枚举变体、关联函数和公开标准库导入补全 | 支持 |
+| 可变闭包绑定 Code Action | 支持 |
+| 跨文件补全、Hover、跳转定义、查找引用 | 尚未实现 |
+| 重命名、格式化 | 尚未实现 |
 
 ## 常见问题
 
@@ -178,3 +202,7 @@ Zed 适配当前以 Dev Extension 方式安装。先把 `riddle-zed.zip` 解压�
 ### VS Code 有基础高亮但没有诊断
 
 基础高亮由扩展内的 TextMate grammar 提供，不代表 LSP 已启动。检查 `riddle.server.path`，再打开 **Output** 面板查看 `Riddle Language Server` 输出。
+
+### JetBrains 中没有诊断或高亮
+
+确认 IDE 是 2026.2 或更高版本，并把 Gradle JVM 设为 JDK 21 或更高版本；在 IDE 内置终端运行 `riddle-lsp --version`。如果命令不可用，修复 `PATH` 后完全退出并重新启动 IDE；仍有问题时通过 **Help | Show Log** 查看 LSP 启动错误。
