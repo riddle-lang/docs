@@ -30,7 +30,7 @@
                 name: 'Riddle',
                 aliases: ['rid'],
                 keywords: {
-                    keyword: 'let fun struct if else while break continue return as self mod use mut pub super crate enum trait impl match const type extern unsafe for in where',
+                    keyword: 'let fun struct if else while break continue return as self mod use mut pub super crate enum trait impl match const type extern unsafe safe for in where',
                     literal: 'true false',
                 },
                 contains: [
@@ -45,13 +45,13 @@
                     {
                         className: 'meta',
                         begin: /#\[/,
-                        end: /\]/,
+                        end: /]/,
                         contains: [rawStringMode(hljs), stringMode(hljs)],
                     },
                     {
                         className: 'function',
                         beginKeywords: 'fun',
-                        end: /(\(|<)/,
+                        end: /([(<])/,
                         excludeEnd: true,
                         contains: [hljs.inherit(hljs.UNDERSCORE_TITLE_MODE, { className: 'name' })],
                     },
@@ -87,7 +87,7 @@
                     },
                     {
                         className: 'variable',
-                        begin: /\b(?!(?:let|fun|struct|if|else|while|break|continue|return|as|self|mod|use|mut|pub|super|crate|enum|trait|impl|match|const|type|extern|unsafe|for|in|where|true|false|_)\b)[a-z_][A-Za-z0-9_]*\b/,
+                        begin: /\b(?!(?:let|fun|struct|if|else|while|break|continue|return|as|self|mod|use|mut|pub|super|crate|enum|trait|impl|match|const|type|extern|unsafe|safe|for|in|where|true|false|_)\b)[a-z_][A-Za-z0-9_]*\b/,
                         relevance: 0,
                     },
                 ],

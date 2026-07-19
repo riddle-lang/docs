@@ -47,17 +47,21 @@ cc arrays_and_associated_types.c -o arrays_and_associated_types
 
 ## extern "C"
 
-Riddle 支持声明外部 C 函数：
+推荐使用 `unsafe extern` 声明外部 C 函数。块内函数默认不安全，只有显式标记为 `safe fun` 的声明才能在安全代码中调用：
 
 ```riddle
-extern "C" {
-    fun abs(x: i32) -> i32;
+unsafe extern "C" {
+    safe fun abs(x: i32) -> i32;
+    fun malloc(size: usize) -> *mut u8;
 }
 
 fun main() {
     let value = abs(-42);
+    let pointer = unsafe { malloc(16) };
 }
 ```
+
+旧式单函数导入 `extern "C" fun name(...);` 仍然接受，但按不安全函数处理。`safe fun` 是声明者对整个调用契约的承诺；错误标记可能让安全代码触发未定义行为。
 
 也支持导出 C ABI 函数：
 
@@ -70,10 +74,12 @@ extern "C" fun add(x: i32, y: i32) -> i32 {
 字符串 FFI 不接受裸 `str` 参数或返回值。`&str` 在 Riddle 内部是胖指针；调用只有声明、没有函数体的 C 导入时，C backend 会把参数的 `ptr` 作为 `const char*` 传出。若导入返回 `&str`，返回指针必须以 NUL 结尾，长度由 `strlen` 恢复。
 
 ```riddle
-extern "C" fun puts(s: &str) -> i32;
+unsafe extern "C" {
+    fun puts(s: &str) -> i32;
+}
 
 fun main() {
-    puts("hello from riddle");
+    unsafe { puts("hello from riddle"); }
 }
 ```
 
@@ -81,22 +87,29 @@ fun main() {
 
 ## unsafe、原始指针和 as
 
-低层代码可以使用 `unsafe` 块、原始指针类型和 `as` 转换：
+低层代码可以使用 `unsafe fun`、`unsafe` 块、原始指针类型和 `as` 转换：
 
 ```riddle
-extern "C" {
+unsafe extern "C" {
     fun my_alloc(size: usize) -> *const i32;
+}
+
+unsafe fun read(ptr: *const i32) -> i32 {
+    unsafe { *ptr }
 }
 
 fun main() {
     unsafe {
         let p: *const i32 = my_alloc(16);
+        let value = read(p);
         let n = 42 as f64;
     }
 }
 ```
 
-当前 `unsafe` 主要是语法和语义边界；原始指针不参与普通引用那套借用检查。
+原始指针解引用、原始指针索引以及调用 `unsafe fun` 都必须位于 `unsafe {}` 中。`unsafe fun` 的函数体本身仍从安全上下文开始，内部不安全操作需要显式块。`unsafe` 不会关闭类型、可变性、move 或借用检查；原始指针不参与普通引用的借用跟踪。
+
+函数类型同样携带安全属性：`fun(A) -> B` 可以转换为 `unsafe fun(A) -> B`，反向转换会被拒绝。调用不安全函数值仍需要 `unsafe {}`。
 
 ## riddle-lsp
 

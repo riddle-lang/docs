@@ -92,7 +92,9 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - 数组字面量、数组重复表达式 `[value; N]`、数组索引；
 - 结构体字面量和字段简写；
 - 类型转换表达式 `expr as Type`；
-- `unsafe { ... }` 块语法；
+- `unsafe { ... }` 块表达式，以及原始指针解引用和索引的安全上下文检查；
+- `unsafe fun`、`unsafe fun(...) -> T` 函数类型和单向安全函数转换；
+- `unsafe extern "C"` 导入块，块内默认不安全并支持 `safe fun` 显式安全声明；
 - 解引用 `*expr`。
 
 ### 运算符
@@ -222,6 +224,8 @@ prelude 直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`
 - 用户类型可以通过实现 `std::marker::Copy` 进入复制语义；编译器会验证结构体字段和所有枚举 payload，并在泛型场景中使用 impl bound；
 - move checker 检查移动后使用；
 - 借用期间移动会报错；
+- 方法和函数返回值会传播引用来源，包含 `Option<&T>` 等泛型包装；
+- 引用参数支持自动重借用，局部借用可在最后一次使用后结束；
 - 字段访问本身不会移动整个结构体；
 - 数组元素和结构体字段按值移动；
 - 引用逃逸分析决定局部值使用栈分配还是 GC 堆分配。

@@ -1,6 +1,6 @@
 # Riddle 错误码参考
 
-## 类型检查 (E0001–E0013, E0031–E0045, E0072)
+## 类型检查 (E0001–E0013, E0031–E0046, E0072)
 
 <a id="e0001"></a>
 ### E0001 — 类型不匹配
@@ -207,6 +207,31 @@ let id = fun(x) { x };  // E0045
 ```
 添加显式类型，例如 `fun(x: i32) { x }`。
 
+<a id="e0046"></a>
+### E0046 — 不安全操作需要 unsafe 上下文
+解引用或索引原始指针、调用 `unsafe fun` 或不安全外部函数，都需要在 `unsafe {}` 块中进行。这些操作可能触发未定义行为，必须由程序员显式保证安全性。
+```riddle
+fun read(ptr: *const i32) -> i32 {
+    let x = *ptr;  // E0046
+    let y = ptr[0]; // E0046
+    x + y
+}
+
+fun read_safe(ptr: *const i32) -> i32 {
+    unsafe {
+        let x = *ptr;   // OK: 在 unsafe 块中
+        let y = ptr[0]; // OK
+        x + y
+    }
+}
+
+unsafe fun external_contract() {}
+
+fun call_contract() {
+    unsafe { external_contract(); }
+}
+```
+
 <a id="e0072"></a>
 ### E0072 — 递归类型无限大小
 结构体或枚举的字段中包含自身，导致类型大小无法在编译期确定。
@@ -383,6 +408,8 @@ let r = &p;
 let m = &mut p;  // E0300
 ```
 
+从容器取得的共享元素引用也会保持对容器的共享借用；引用仍活跃时调用需要 `&mut self` 的方法同样触发 E0300。
+
 <a id="e0301"></a>
 ### E0301 — 共享借用与已有可变借用冲突
 已有可变借用尚未结束时，不能再创建共享借用。
@@ -398,6 +425,8 @@ let r = &p;  // E0301
 let a = &mut p;
 let b = &mut p;  // E0302
 ```
+
+方法返回的可变引用会关联回 receiver。即使引用经过 `Option<&mut T>` 等容器传递，只要它后面仍会使用，再次调用 receiver 的可变方法仍会触发 E0302。
 
 <a id="e0303"></a>
 ### E0303 — 借用期间赋值

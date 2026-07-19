@@ -28,9 +28,11 @@ statement =
 
 // == FFI ==
 
-extern_block = "extern" string_lit "{" (func_sig ";")* "}";
+extern_block = "unsafe"? "extern" string_lit "{" (extern_func_sig ";")* "}";
 
-extern_fn_decl = "extern" string_lit func_decl;
+extern_func_sig = ("safe" | "unsafe")? func_sig;
+
+extern_fn_decl = "pub"? "unsafe"? "extern" string_lit func_decl;
 
 // == module / use ==
 
@@ -53,7 +55,7 @@ trait_item = attribute* (func_sig | type_alias_decl);
 impl_decl = "impl" generic_params? ty ("for" ty)? where_clause? "{" impl_item* "}";
 impl_item = attribute* (func_decl | type_alias_decl | const_decl);
 
-func_sig = "fun" ident generic_params? "(" (param ("," param)*)? ")" ("->" ty)? where_clause?;
+func_sig = "unsafe"? "fun" ident generic_params? "(" (param ("," param)*)? ")" ("->" ty)? where_clause?;
 type_alias_decl = "type" ident ("=" ty)? ";";
 const_decl = "const" ident ":" ty ("=" expression)? ";";
 
@@ -76,7 +78,7 @@ var_decl = "let" "mut"? ident (":" ty)? ("=" expression)? ";";
 
 param = attribute* ((("&" "mut"?)? "self") | (ident ":" ty));
 
-func_decl = "fun" ident generic_params? "(" (param ("," param)*)? ")" ("->" ty)? where_clause? (block | ";");
+func_decl = "pub"? "unsafe"? "fun" ident generic_params? "(" (param ("," param)*)? ")" ("->" ty)? where_clause? (block | ";");
 
 block = "{" statement* expression? "}";
 
@@ -169,7 +171,7 @@ ty = attribute* (
    | "*" ("const" | "mut") ty
    | "[" ty ";" expression "]"
    | int_lit
-   | "fun" "(" type_list? ")" ("->" ty)?
+   | "unsafe"? "fun" "(" type_list? ")" ("->" ty)?
    | "(" (ty ("," ty)* ","?)? ")"
    );
 
