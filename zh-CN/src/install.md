@@ -53,13 +53,14 @@ riddle-lsp --version
 riddlec [--verbose] [--backend c] [--output <file>] <file>...
 ```
 
-例如，把 `examples/basics/arrays_and_associated_types.rid` 通过 C backend 生成 C 源码：
+例如，创建一个项目，再把入口文件通过 C backend 生成 C 源码：
 
 ```bash
-cargo run -p riddlec -- --backend c examples/basics/arrays_and_associated_types.rid
+clue new hello
+cargo run -p riddlec -- --backend c --output hello.c hello/src/main.rid
 ```
 
-C backend 只写出 C 源码，不会调用系统编译器。输出已经包含内置 GC；如需本机可执行文件，可以再运行 `cc arrays_and_associated_types.c -o arrays_and_associated_types`，不需要额外 GC 库。
+C backend 只写出 C 源码，不会调用系统编译器。输出已经包含内置 GC；如需本机可执行文件，可以再运行 `cc hello.c -o hello`，不需要额外 GC 库。
 
 ## 构建文档
 
@@ -95,12 +96,6 @@ rustup update stable
 
 ### 示例文件在哪里？
 
-仓库中的示例文件放在：
-
-```text
-riddle/examples/
-```
-
-当前仓库提供 `basics/arrays_and_associated_types.rid`，演示数组、const generics、关联类型和 C backend。其他语言能力以本书中的可运行代码片段和测试为准。
+仓库不单独维护 `examples/` 目录。可以使用 `clue new` 创建最小项目；其他语言能力以本书中的可运行代码片段和测试为准。
 
 不过示例可能会跟随语言设计快速变化。学习 Riddle 的主要概念时，请优先阅读本书后续的“Riddle 基础”“数据与抽象”和“所有权与内存”。

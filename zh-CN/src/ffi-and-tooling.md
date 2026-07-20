@@ -27,13 +27,14 @@ riddlec [--verbose] [--backend c] [--output <file>] <file>...
 使用 C backend：
 
 ```bash
-cargo run -p riddlec -- --backend c examples/basics/arrays_and_associated_types.rid
+clue new hello
+cargo run -p riddlec -- --backend c --output hello.c hello/src/main.rid
 ```
 
 `riddlec` 只生成 C 源码。生成结果已经包含内置 `rgc` 运行时；需要可执行文件时，再手动调用系统中的 C 编译器，不需要链接外部 GC 库：
 
 ```bash
-cc arrays_and_associated_types.c -o arrays_and_associated_types
+cc hello.c -o hello
 ```
 
 当前 C backend 会把 Riddle 的结构体生成为 C `struct`，固定长度数组生成为 C 数组字段，初始化含数组字段的结构体时使用 `memcpy` 复制数组存储。枚举值会生成为带 `tag` 和 payload 字段的结构体表示。raw string 会按 C 字符串规则转义后输出。
