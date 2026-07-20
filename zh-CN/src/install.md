@@ -101,6 +101,6 @@ rustup update stable
 riddle/examples/
 ```
 
-目录按用途分组：`basics/` 是基础语法和类型示例，`traits/` 是 trait/impl 示例，`ownership/` 是引用和可变性示例，`ffi/` 是 C FFI 示例，`regressions/` 是编译器回归用例。
+当前仓库提供 `basics/arrays_and_associated_types.rid`，演示数组、const generics、关联类型和 C backend。其他语言能力以本书中的可运行代码片段和测试为准。
 
 不过示例可能会跟随语言设计快速变化。学习 Riddle 的主要概念时，请优先阅读本书后续的“Riddle 基础”“数据与抽象”和“所有权与内存”。
