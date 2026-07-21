@@ -83,7 +83,7 @@ let missing = text.byte_at(5usize);  // None
 
 ## 可增长的 `String`
 
-`String` 是由 GC 管理的 UTF-8 字节缓冲区，可以从 `&str` 创建并继续追加字符串切片：
+`String` 是由运行时管理的 UTF-8 字节缓冲区，可以从 `&str` 创建并继续追加字符串切片：
 
 ```riddle
 let mut text = String::from_str("hello");
@@ -125,7 +125,7 @@ C 导入返回 `&str` 时，返回的 `const char*` 必须以 NUL 结尾，C bac
 |------|------|--------|
 | `str` | DST，总是通过引用使用 | 不定长，总是通过引用使用 |
 | `&str` | 胖指针 `{ ptr, len }` | 胖指针 `{ ptr, len }` |
-| `String` | 堆分配的可增长字符串 | GC 管理的可增长 UTF-8 字节缓冲区 |
+| `String` | 堆分配的可增长字符串 | 运行时管理的可增长 UTF-8 字节缓冲区 |
 | 字面量类型 | `&'static str` | `&str` |
 | raw string | `r#"..."#` | `r#"..."#` |
 | 生命周期 | 需要标注生命周期 | 无生命周期标注，逃逸分析自动处理 |

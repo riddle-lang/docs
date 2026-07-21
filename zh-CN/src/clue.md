@@ -12,7 +12,7 @@ clue run [path] [-- <args>...]
 
 `clue init` 在指定目录中初始化项目，`clue new` 创建新目录和项目；二者都会生成清单、入口源码和忽略文件。它们不会覆盖已有的 `Clue.toml` 或目标入口源码。`clue check` 检查整个项目但不生成 C，`clue build` 构建项目，`clue run` 先构建二进制项目再运行生成的程序。
 
-二进制项目会保留 `.clue/build/<package-name>.c`，并在同一目录生成 `<package-name>`；Windows 下扩展名为 `.exe`。Clue 优先使用 `CC` 指定的编译器，否则依次探测 `cc`、`gcc`、`clang`，Windows 还会探测 `clang-cl` 和 `cl`。库项目仍只生成 C 源码，不会链接可执行文件。
+二进制项目会保留 `.clue/build/<package-name>.c` 和默认的 `<package-name>.runtime.c`，并在同一目录生成 `<package-name>`；Windows 下扩展名为 `.exe`。Clue 优先使用 `CC` 指定的编译器，否则依次探测 `cc`、`gcc`、`clang`，Windows 还会探测 `clang-cl` 和 `cl`。库项目仍只生成 C 源码，不会选择或链接运行时。
 
 ## 项目布局
 
@@ -56,6 +56,27 @@ entry = "src/bin/hello.rid"
 version = "0.1.0"
 ```
 
+## 运行时与分配器
+
+二进制项目默认链接 Riddle 自带的保守式非移动 GC。要替换为自定义 GC、arena 或其他分配器，在项目根目录的 `Clue.toml` 中指定一个 C 源文件：
+
+```toml
+[runtime]
+source = "runtime/custom_gc.c"
+```
+
+路径相对项目根目录解析。运行时源码必须实现以下 ABI：
+
+```c
+void rgc_init(void *stack_bottom);
+void *rgc_alloc(size_t size);
+void rgc_collect(void);
+```
+
+`rgc_alloc` 返回的地址必须满足普通 C 对象的对齐要求，并且在引用仍可能存在时不能移动。无回收分配器可以忽略 `stack_bottom`，并把 `rgc_collect` 实现为空函数。当前 ABI 不支持移动式 GC、逐对象释放、finalizer 或多线程栈注册。
+
+运行时属于最终进程，因此 `[runtime]` 只允许出现在二进制包；库和依赖包只生成 ABI 调用，不能选择运行时。
+
 ## 本地依赖
 
 `[dependencies]` 目前支持本地 path 依赖：
@@ -98,7 +119,7 @@ Clue 会展开入口文件声明的外部模块和所有本地 path 依赖，再
 
 ## 构建缓存
 
-Clue 会缓存构建指纹。`Clue.toml`、展开后的源码、当前 Riddle 编译器版本、目标平台或 C 编译器选择发生变化时会重新构建；没有变化且输出文件仍存在时会输出 `fresh`。
+Clue 会缓存构建指纹。`Clue.toml`、展开后的源码、运行时源码、当前 Riddle 编译器版本、目标平台或 C 编译器选择发生变化时会重新构建；没有变化且输出文件仍存在时会输出 `fresh`。
 
 ## 运行项目
 

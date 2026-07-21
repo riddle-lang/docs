@@ -167,4 +167,4 @@ fun maybe(flag: bool) -> &Foo {
 | 未逃逸局部 | `Alloca`，栈上存储 |
 | 逃逸局部 | `HeapAlloc`，GC 堆存储 |
 
-C backend 会把 `HeapAlloc` 降为内置运行时的 `rgc_alloc`。生成的 C 已包含该运行时，不需要链接外部 GC 库。
+C backend 会把 `HeapAlloc` 降为运行时 ABI 的 `rgc_alloc`。`clue build` 默认链接内置 GC，也可以按 `Clue.toml` 的 `[runtime].source` 链接自定义 GC 或分配器；直接编译 `riddlec` 生成的 C 时需要同时提供一个运行时实现。

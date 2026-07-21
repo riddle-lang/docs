@@ -245,7 +245,7 @@ prelude 直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`
 
 | 后端 | 状态 |
 |------|------|
-| C backend | CLI 可用：`--backend c`。输出包含内置 `rgc` 运行时，不需要外部 GC 库 |
+| C backend | CLI 可用：`--backend c`。输出使用 `rgc` 运行时 ABI；默认 provider 由 `clue` 选择，也支持自定义 provider |
 
 C backend 实现统一的 `Backend` trait：`compile(&mut self, module: &Module) -> Result<String, Error>`。
 
