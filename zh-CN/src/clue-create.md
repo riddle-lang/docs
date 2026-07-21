@@ -164,4 +164,4 @@ clue run hello
 clue run hello -- arg1 arg2
 ```
 
-Clue 优先使用 `CC` 指定的 C 编译器，否则探测系统中的 `cc`、`gcc`、`clang`、`clang-cl` 或 `cl`。
+设置 `CC` 时 Clue 会严格使用指定的 C 编译器；否则自动探测系统中的 `cc`、`gcc`、`clang`、带版本后缀的 GCC/Clang，以及 Windows 上的 `clang-cl` 或 `cl`。只有能完成 C11 编译和链接的候选才会被采用。

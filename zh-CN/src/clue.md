@@ -12,7 +12,7 @@ clue run [path] [-- <args>...]
 
 `clue init` 在指定目录中初始化项目，`clue new` 创建新目录和项目；二者都会生成清单、入口源码和忽略文件。它们不会覆盖已有的 `Clue.toml` 或目标入口源码。`clue check` 检查整个项目但不生成 C，`clue build` 构建项目，`clue run` 先构建二进制项目再运行生成的程序。
 
-二进制项目会保留 `.clue/build/<package-name>.c` 和默认的 `<package-name>.runtime.c`，并在同一目录生成 `<package-name>`；Windows 下扩展名为 `.exe`。Clue 优先使用 `CC` 指定的编译器，否则依次探测 `cc`、`gcc`、`clang`，Windows 还会探测 `clang-cl` 和 `cl`。库项目仍只生成 C 源码，不会选择或链接运行时。
+二进制项目会保留 `.clue/build/<package-name>.c` 和默认的 `<package-name>.runtime.c`，并在同一目录生成 `<package-name>`；Windows 下扩展名为 `.exe`。设置 `CC` 时 Clue 会严格使用它，失败时不会静默回退；未设置时会探测 `cc`、`gcc`、`clang`、带版本后缀的 GCC/Clang，Windows 还会探测 `clang-cl` 和 `cl`。候选必须能够完成一次 C11 编译和链接。库项目仍只生成 C 源码，不会选择或链接运行时。
 
 ## 项目布局
 
@@ -119,7 +119,7 @@ Clue 会展开入口文件声明的外部模块和所有本地 path 依赖，再
 
 ## 构建缓存
 
-Clue 会缓存构建指纹。`Clue.toml`、展开后的源码、运行时源码、当前 Riddle 编译器版本、目标平台或 C 编译器选择发生变化时会重新构建；没有变化且输出文件仍存在时会输出 `fresh`。
+Clue 会缓存构建指纹。`Clue.toml`、展开后的源码、运行时源码、当前 Riddle 编译器版本、目标平台，或者 C 编译器的实际路径与版本发生变化时会重新构建；没有变化且输出文件仍存在时会输出 `fresh`。成功的 C11 兼容性探测也按编译器身份缓存。
 
 ## 运行项目
 
