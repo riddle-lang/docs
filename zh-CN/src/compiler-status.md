@@ -189,10 +189,11 @@ match value {
 
 当前标准库会自动拼到用户源码后面，根部通过 prelude 重导出常用项，同时按 Rust 风格分模块定义：
 
-prelude 直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`、`Ok`、`Err`、`Copy`、`Clone`、比较 trait 和迭代协议。
+prelude 直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`、`Ok`、`Err`、`Copy`、`Clone`、`print`、比较 trait 和迭代协议。
 
 - `std::option::Option<T>`，提供 `is_some`、`is_none`、`unwrap_or` 和 `or`；
 - `std::result::Result<T, E>`，提供 `is_ok`、`is_err`、`unwrap_or`、`ok` 和 `err`；
+- `std::io::{print, Display}`，`print` 当前支持 `&str` 和 `i32`，输出时不自动换行；
 - `std::string::String` 提供 `new`、`from_str`、`as_str`、`len`、`capacity`、`is_empty`、`push_str` 和 `clear`；同一模块为 `str` 提供 `len`、`is_empty` 和返回 `Option<u8>` 的 `byte_at`；
 - `std::vector::Vector<T>` 提供 `new`、`len`、`capacity`、`is_empty`、`push`、`pop`、`get`、`get_mut`、`clear` 和按值迭代；
 - `std::iter::{Iterator, IntoIterator}`；
@@ -270,5 +271,6 @@ C backend 会把标量 std 运算 trait 的显式方法调用直接输出为 `+`
 - 字段级可见性尚未做类型检查约束；
 - `riddlec` 的 C backend 只输出 C；`clue build` 会严格使用 `CC`，或自动选择能完成 C11 编译和链接的系统 C 编译器来生成本机可执行文件；
 - 逃逸分析当前粒度是整个局部变量，不做字段级拆分；
-- 闭包当前按整个绑定捕获，不做字段级精确捕获；模式绑定跨入闭包仍会报告 E0044；
+- 闭包当前按整个绑定捕获，不做字段级精确捕获；
+- 函数类型语法目前只能写表示 `Fn` 的 `fun(...) -> T`，尚不能显式声明接收或返回 `FnMut`、`FnOnce`；
 - 这是开发中工具链，不保证语法和 ABI 稳定。
