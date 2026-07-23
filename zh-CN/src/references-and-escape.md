@@ -118,13 +118,13 @@ fun pick() -> &Foo {
 把引用传给未知函数或外部函数时，编译器会保守地认为该引用可能逃逸：
 
 ```riddle
-extern "C" {
+unsafe extern "C" {
     fun store(value: &Foo);
 }
 
 fun caller() {
     let foo = Foo { x: 1, y: 2 };
-    store(&foo); // 保守处理：foo 可能逃逸
+    unsafe { store(&foo); } // 保守处理：foo 可能逃逸
 }
 ```
 

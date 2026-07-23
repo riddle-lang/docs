@@ -1,6 +1,6 @@
 # 编辑器与 LSP
 
-Riddle 通过 `riddle-lsp` 为编辑器提供实时诊断、补全和语义高亮。当前仓库提供 Helix、VS Code、Zed 和 IntelliJ IDEA 2026.2+ 的适配文件。
+Riddle 通过 `riddle-lsp` 为编辑器提供实时诊断、补全和语义高亮。当前仓库提供 Helix、VS Code、Zed 和 IntelliJ IDEA 2026.1+ 的适配文件。
 
 ## 准备 riddle-lsp
 
@@ -24,7 +24,7 @@ pwsh -File editors\package.ps1
 bash editors/package.sh
 ```
 
-脚本需要 Node.js、npm、JDK 21 或更高版本和网络连接，Bash 版本还需要 `zip` 命令。首次构建 JetBrains 插件时，Gradle wrapper 会下载 Gradle 9 和 IntelliJ Platform 2026.2 SDK。脚本会在 `editors/dist` 中生成：
+脚本需要 Node.js、npm、JDK 21 或更高版本和网络连接，Bash 版本还需要 `zip` 命令。首次构建 JetBrains 插件时，Gradle wrapper 会下载 Gradle 9 和 IntelliJ Platform 2026.1 SDK。脚本会在 `editors/dist` 中生成：
 
 | 文件 | 用途 |
 |------|------|
@@ -122,7 +122,7 @@ Windows 路径中的反斜杠需要转义：
 
 ## IntelliJ IDEA
 
-插件使用 IntelliJ Platform 2026.2 的 LSP integration API，源码全部为 Kotlin。IntelliJ IDEA 各版本均可使用；Android Studio 不在当前支持范围内。
+插件使用 IntelliJ Platform 2026.1 的 LSP integration API，源码全部为 Kotlin。IntelliJ IDEA 2026.1 及更高版本可用；Android Studio 不在当前支持范围内。
 
 1. 打开 **Settings | Plugins**。
 2. 点击齿轮菜单，选择 **Install Plugin from Disk...**。
@@ -205,4 +205,4 @@ Zed 适配当前以 Dev Extension 方式安装。先把 `riddle-zed.zip` 解压�
 
 ### JetBrains 中没有诊断或高亮
 
-确认 IDE 是 2026.2 或更高版本，并把 Gradle JVM 设为 JDK 21 或更高版本；在 IDE 内置终端运行 `riddle-lsp --version`。如果命令不可用，修复 `PATH` 后完全退出并重新启动 IDE；仍有问题时通过 **Help | Show Log** 查看 LSP 启动错误。
+确认 IDE 是 2026.1 或更高版本，并把 Gradle JVM 设为 JDK 21 或更高版本；在 IDE 内置终端运行 `riddle-lsp --version`。如果命令不可用，修复 `PATH` 后完全退出并重新启动 IDE；仍有问题时通过 **Help | Show Log** 查看 LSP 启动错误。

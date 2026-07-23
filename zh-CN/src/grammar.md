@@ -28,7 +28,7 @@ statement =
 
 // == FFI ==
 
-extern_block = "unsafe"? "extern" string_lit "{" (extern_func_sig ";")* "}";
+extern_block = "unsafe" "extern" string_lit "{" (extern_func_sig ";")* "}";
 
 extern_func_sig = ("safe" | "unsafe")? func_sig;
 
@@ -49,8 +49,8 @@ use_tree =
 enum_decl = "enum" ident item_generic_params? where_clause? "{" (enum_variant ("," enum_variant)* ","?)? "}";
 enum_variant = attribute* ident ("(" type_list? ")")? ("{" struct_field_list? "}")?;
 
-trait_decl = "trait" ident "{" trait_item* "}";
-trait_item = attribute* (func_sig | type_alias_decl);
+trait_decl = "trait" ident (":" generic_bound ("+" generic_bound)*)? "{" trait_item* "}";
+trait_item = attribute* (func_decl | type_alias_decl);
 
 impl_decl = "impl" generic_params? ty ("for" ty)? where_clause? "{" impl_item* "}";
 impl_item = attribute* (func_decl | type_alias_decl | const_decl);

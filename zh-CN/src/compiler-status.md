@@ -56,7 +56,7 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - Clue 项目按原始文件 URI 发布诊断，包括未打开模块，并在重新分析后清理过期诊断；
 - 诊断严重性层级：Error、Warning、Information、Hint；
 - 文档变更会先合并短时间内的连续输入，再在后台运行诊断并丢弃过期结果；未变化的文件和无关 Clue 项目直接复用诊断，变化的分析单元复用增量语法树、函数体和全局类型检查缓存，在声明、overlay、磁盘源码或 manifest 变化时保守失效；诊断在 move/borrow 检查后停止，不生成 MIR；UTF-16 位置通过行索引换算，语义 Token 只解析当前文件并降级 HIR，并按文档文本缓存；
-- 仓库内提供 Helix、VS Code、Zed 和 IntelliJ IDEA 2026.2+ 的 `.rid` 文件与 `riddle-lsp` 适配；
+- 仓库内提供 Helix、VS Code、Zed 和 IntelliJ IDEA 2026.1+ 的 `.rid` 文件与 `riddle-lsp` 适配；
 
 安装和验证步骤见[编辑器与 LSP](./editor-support.md)。
 
@@ -150,7 +150,9 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 ### Trait 和 impl
 
 - `trait` 定义；
+- 父 trait 声明、传递 bound、父方法查找、impl 前置依赖和继承环检查；
 - trait 方法签名；
+- trait 默认方法；impl 未覆写时使用默认体，显式覆写优先；
 - 关联类型声明和默认关联类型；
 - `impl Trait for Type`；
 - `impl Type` 固有方法；
@@ -262,8 +264,6 @@ C backend 会把标量 std 运算 trait 的显式方法调用直接输出为 `+`
 
 ## 当前限制
 
-- 目前只有 `+` 对用户类型走 `Add` trait 分派，其他算术、位运算、移位和复合赋值操作符仍主要是内置检查；
-- trait 默认方法尚未实现，因此 `Iterator` 当前只提供核心 `next` 协议，没有 Rust 的适配器方法；
 - `Default`、格式化和哈希协议尚未提供；
 - 浮点余数尚未支持，`Rem` / `RemAssign` 目前只为整数实现；
 - 显式泛型函数调用和显式泛型结构体构造表达式还不支持，例如 `f::<T>()`、`Type::<T> { ... }`；

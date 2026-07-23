@@ -12,7 +12,33 @@ trait Summary {
 }
 ```
 
-`Summary` trait 声明了一个方法 `summarize`，它不接受参数并返回一个 `&str`。trait 方法只有签名，没有函数体——实现由具体类型在 `impl` 块中提供。
+`Summary` trait 声明了一个必需方法 `summarize`，它不接受参数并返回一个 `&str`。没有函数体的方法必须由具体类型在 `impl` 块中提供。
+
+Trait 方法也可以提供默认实现。impl 未覆写时使用默认体，显式覆写优先；默认体可以调用同一 trait 的其他方法：
+
+```riddle
+trait Summary {
+    fun title(&self) -> &str;
+
+    fun summarize(&self) -> &str {
+        self.title()
+    }
+}
+```
+
+Trait 可以声明一个或多个父 trait：
+
+```riddle
+trait Named {
+    fun name(&self) -> i32;
+}
+
+trait Tagged: Named {
+    fun tag(&self) -> i32;
+}
+```
+
+`T: Tagged` 会同时满足 `T: Named`，因此泛型代码可以调用 `name`。为类型实现 `Tagged` 前，必须显式实现 `Named`；多级父 trait 会传递生效。未知父 trait 和继承环会在类型检查时报错，多个父 trait 使用 `+` 分隔。
 
 ## 为类型实现 Trait
 
@@ -108,6 +134,8 @@ where T: Marker
 
 `impl` 上的 `where` 约束会检查 Paterson condition：约束必须严格小于被实现的类型，避免递归 trait 求解无限增长。
 
+标准库比较 trait 也使用同一套父 trait 关系：`Eq: PartialEq`、`PartialOrd: PartialEq`、`Ord: Eq + PartialOrd`。
+
 ## 内置 Trait
 
 Riddle 的 `std/lib.rid` 会自动拼到用户源码后面。标准库中用 Rust 风格属性 `#[lang = "..."]` 标记编译器需要识别的特殊 trait。
@@ -193,4 +221,4 @@ fun main() -> i32 {
 
 `PartialEq::eq`、`PartialOrd::partial_cmp` 和 `Ord::cmp` 可以作为普通方法调用；整数、字符和布尔值返回 `Ordering`，浮点比较遇到 NaN 时返回 `None`。当前编译器会为用户类型把算术、取余、位运算、移位、一元负号、逻辑非和复合赋值分派到对应的 `#[lang = "..."]` trait 方法，并用 `Output` 关联类型决定非赋值运算的结果类型。`PartialEq` 会参与 `==` / `!=` 检查，`PartialOrd` 会参与 `<`、`>`、`<=`、`>=` 检查；比较运算目前只检查 trait 约束，尚未分派到比较 trait 方法。
 
-Riddle 尚不支持 trait 默认方法，所以 `Iterator` 目前只有 `next` 核心协议，没有 Rust 的 `map`、`filter` 等默认适配器。`Default` 的关联 trait 函数调用、格式化器和哈希器协议也尚未实现；std 不再为这些能力暴露空壳 trait。浮点余数同样暂未支持，`Rem` 和 `RemAssign` 只为整数实现。
+`Default` 的关联 trait 函数调用、格式化器和哈希器协议尚未实现；std 不再为这些能力暴露空壳 trait。浮点余数同样暂未支持，`Rem` 和 `RemAssign` 只为整数实现。

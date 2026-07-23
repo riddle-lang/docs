@@ -50,7 +50,7 @@ cc hello.c crates/gc/src/runtime.c -o hello
 
 ## extern "C"
 
-推荐使用 `unsafe extern` 声明外部 C 函数。块内函数默认不安全，只有显式标记为 `safe fun` 的声明才能在安全代码中调用：
+外部 C 函数声明块必须使用 `unsafe extern`。块内函数默认不安全，只有显式标记为 `safe fun` 的声明才能在安全代码中调用；`safe` 不能在普通 `extern` 中使用：
 
 ```riddle
 unsafe extern "C" {
@@ -134,7 +134,7 @@ cargo run -p riddle-lsp
 - 注释（notes）提供上下文和修复建议；
 - 严重性分层：Error、Warning、Information、Hint。
 
-仓库中的 `editors` 目录提供 Helix、VS Code、Zed 和 IntelliJ IDEA 2026.2+ 客户端。完整的安装、路径配置、验证步骤和故障排查见[编辑器与 LSP](./editor-support.md)。
+仓库中的 `editors` 目录提供 Helix、VS Code、Zed 和 IntelliJ IDEA 2026.1+ 客户端。完整的安装、路径配置、验证步骤和故障排查见[编辑器与 LSP](./editor-support.md)。
 
 ## MIR 后端架构
 

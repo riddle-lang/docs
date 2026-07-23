@@ -145,8 +145,8 @@ let b = Box { value: Plain {} };  // E0035
 ```
 
 <a id="e0036"></a>
-### E0036 — 比较缺少 trait
-用户类型使用 `==` / `!=` 时需要 `PartialEq`，使用有序比较时需要 `PartialOrd`。
+### E0036 — 缺少必需 trait 实现
+用户类型参与比较时需要实现对应的比较 trait；实现子 trait 时，也必须先实现它声明的所有父 trait。
 ```riddle
 struct Point { x: i32 }
 let same = Point { x: 1 } == Point { x: 2 };  // E0036
@@ -185,6 +185,15 @@ fun invalid() {
 ```riddle
 let invalid: str = "hello";  // E0043
 let valid: &str = "hello";   // OK
+```
+
+<a id="e0044"></a>
+### E0044 — 无效的父 trait 声明
+父 trait 必须能解析到已声明的 trait，并且 trait 继承关系不能形成环。
+```riddle
+trait Child: Missing {}  // E0044: unknown supertrait
+trait First: Second {}   // E0044: cycle
+trait Second: First {}
 ```
 
 <a id="e0045"></a>
@@ -246,15 +255,6 @@ struct Node {
 trait Foo {
     fun bar();
     fun bar();  // E0020: duplicate method `bar`
-}
-```
-
-<a id="e0021"></a>
-### E0021 — trait 方法有函数体（语义防线）
-trait 声明中的方法不能有实现体。当前语法分析器会先要求方法签名以 `;` 结束，因此下面的源码会在解析阶段报错，不会进入产生 E0021 的语义检查分支。
-```riddle
-trait Foo {
-    fun bar() { }
 }
 ```
 
