@@ -118,7 +118,10 @@ postfix = primary ( "(" arg_list ")" | "." ident | "[" expression "]" | struct_e
 
 arg_list = (expression ("," expression)*)?;
 
-primary = literal | path | array_expr | lambda_expr | "(" expression? ")";
+primary = literal | path | array_expr | tuple_expr | lambda_expr | "(" expression? ")";
+
+tuple_expr = "(" expression "," ")"
+           | "(" expression ("," expression)+ ","? ")";
 
 array_expr = "[" "]"
            | "[" expression ("," expression)* ","? "]"

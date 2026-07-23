@@ -134,7 +134,7 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - `&str`：引用 `str` 的定长胖指针值；
 - 引用：`&T`、`&mut T`；
 - 原始指针类型：`*const T`、`*mut T`；
-- 元组类型；
+- 元组类型和元组表达式，例如 `(2, 3)` 与 `(2,)`；
 - 固定长度数组 `[T; N]`；
 - const generics，例如 `struct Buffer<T, const N: usize> { data: [T; N] }`；
 - 结构体；
@@ -161,7 +161,7 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - trait impl 合约检查：缺少方法、参数类型、返回类型和缺少关联类型会报错；
 - 泛型 trait impl 模式匹配，例如 `impl<T> std::marker::Copy for Box<T>`；
 - `impl` 上的 `where` 子句，并检查 Paterson condition：约束必须严格小于被实现的类型；
-- `+` 可通过 `#[lang = "add"]` 的 `Add` trait 为非数值类型分派；
+- 算术、取余、位运算、移位、一元负号、逻辑非和复合赋值可通过对应的 `#[lang = "..."]` trait 为用户类型分派；
 - `==` / `!=` 检查 `PartialEq`，有序比较检查 `PartialOrd`；
 - 标准库 `Iterator` / `IntoIterator` 协议，含 `Range`、`range(start, end)`、数组 `IntoIterator` 和 `for` 遍历。
 
@@ -209,13 +209,13 @@ prelude 直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`
 当前影响编译器语义的 lang trait 包括：
 
 - `#[lang = "copy"]`：被它标记的 `Copy` trait 会被 move checker 用来决定用户类型是否按复制语义处理；
-- `#[lang = "add"]`：非数值类型的 `+` 会分派到 `Add::add`；
-- `#[lang = "add"]` 到 `#[lang = "shr"]`：标量 impl 的算术、一元、位运算和移位方法直接降为 MIR 运算；
-- `#[lang = "add_assign"]` 到 `#[lang = "shr_assign"]`：标量 impl 的复合赋值方法直接降为 MIR 的读取、运算和写回；
+- `#[lang = "add"]` 到 `#[lang = "shr"]`：用户类型的算术、位运算和移位会分派到对应 trait 方法；标量 impl 的方法调用直接降为 MIR 运算；
+- `#[lang = "neg"]` 和 `#[lang = "not"]`：用户类型的一元负号和逻辑非会分派到对应 trait 方法；标量 impl 的方法调用直接降为 MIR 运算；
+- `#[lang = "add_assign"]` 到 `#[lang = "shr_assign"]`：用户类型的复合赋值会分派到对应 trait 方法；标量 impl 的方法调用直接降为 MIR 的读取、运算和写回；
 - `#[lang = "partial_eq"]`：用户类型使用 `==` / `!=` 时需要满足 `PartialEq`；
 - `#[lang = "partial_ord"]`：用户类型使用 `<`、`>`、`<=`、`>=` 时需要满足 `PartialOrd`。
 
-`Clone::clone`、`PartialEq::eq`、`PartialOrd::partial_cmp`、`Ord::cmp` 和各运算 trait 方法可以直接调用。带受支持 lang 标记的标量运算方法不会生成 `add__i64` 一类 C 包装函数，而是生成原生 C 运算表达式。未标记的同名 trait 和用户类型 impl 仍按普通方法编译。除 `Add` 外，用户类型的运算符重载尚未接入这些 trait。
+`Clone::clone`、`PartialEq::eq`、`PartialOrd::partial_cmp`、`Ord::cmp` 和各运算 trait 方法可以直接调用。带受支持 lang 标记的标量运算方法不会生成 `add__i64` 一类 C 包装函数，而是生成原生 C 运算表达式。未标记的同名 trait 仍按普通方法编译；用户类型的非比较运算符会调用对应 trait impl 方法。
 
 ### 所有权、移动和逃逸
 
