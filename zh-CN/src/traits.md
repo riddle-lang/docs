@@ -202,9 +202,9 @@ fun main() {
 
 ```riddle
 #[lang = "add"]
-trait Add {
+trait Add<Rhs = Self> {
     type Output;
-    fun add(self, rhs: Self) -> Self::Output;
+    fun add(self, rhs: Rhs) -> Self::Output;
 }
 ```
 
@@ -219,6 +219,8 @@ fun main() -> i32 {
 
 对于 `i32` 等标量，`left.add(2)` 会直接降为 MIR `Add`，C backend 输出等价的 `left + 2`，不会生成或调用 `add__i32` 包装函数。一元运算、位运算、移位和 `add_assign` 等复合赋值方法遵循相同规则。只有带受支持 `#[lang = "..."]` 标记的 trait 的标量 impl 会开洞；未标记的同名 trait 和结构体等用户类型 impl 仍保留普通方法调用。
 
-`PartialEq::eq`、`PartialOrd::partial_cmp` 和 `Ord::cmp` 可以作为普通方法调用；整数、字符和布尔值返回 `Ordering`，浮点比较遇到 NaN 时返回 `None`。当前编译器会为用户类型把算术、取余、位运算、移位、一元负号、逻辑非和复合赋值分派到对应的 `#[lang = "..."]` trait 方法，并用 `Output` 关联类型决定非赋值运算的结果类型。`PartialEq` 会参与 `==` / `!=` 检查，`PartialOrd` 会参与 `<`、`>`、`<=`、`>=` 检查；比较运算目前只检查 trait 约束，尚未分派到比较 trait 方法。
+二元、复合赋值、`PartialEq` 和 `PartialOrd` trait 都接受默认值为 `Self` 的 `Rhs` 参数，因此可以为不同的右操作数类型分别实现 trait。泛型函数中的 `T: Add<Rhs, Output = O>` 运算会保留为 trait 调用，并在单态化后选择具体 impl。普通赋值和内建复合赋值先计算右侧，再计算左侧位置；重载复合赋值按方法调用顺序先计算左侧接收者，再计算右侧。
+
+`PartialEq::eq`、`PartialOrd::partial_cmp` 和 `Ord::cmp` 可以作为普通方法调用；整数、字符和布尔值返回 `Ordering`，浮点比较遇到 NaN 时返回 `None`。当前编译器会为用户类型把算术、取余、位运算、移位、一元负号、逻辑非、复合赋值和比较运算分派到对应的 `#[lang = "..."]` trait 方法，并用 `Output` 关联类型决定非赋值算术运算的结果类型。`==` 调用 `PartialEq::eq`，`!=` 调用默认的 `PartialEq::ne`；`<`、`<=`、`>`、`>=` 分别调用 `PartialOrd::lt`、`le`、`gt`、`ge`，这些默认方法通过 `partial_cmp` 判断，遇到 `None` 时均返回 `false`。
 
 `Default` 的关联 trait 函数调用、格式化器和哈希器协议尚未实现；std 不再为这些能力暴露空壳 trait。浮点余数同样暂未支持，`Rem` 和 `RemAssign` 只为整数实现。

@@ -102,10 +102,14 @@ x = 2;  // E0031: cannot assign to immutable binding
 
 <a id="e0032"></a>
 ### E0032 — 类型参数数量不匹配
-使用泛型结构体或枚举时，传入的类型参数数量和定义不一致。
+使用泛型结构体、枚举或 trait 时，传入的类型参数数量和定义不一致；有默认值的 trait 类型参数可以省略。
 ```riddle
 struct Box<T> { value: T }
 let b: Box<i32, bool>;  // E0032: expected 1 type argument, got 2
+
+trait Convert<T> {}
+struct Value {}
+impl Convert for Value {}  // E0032: expected 1 type argument, got 0
 ```
 
 <a id="e0033"></a>
@@ -246,7 +250,7 @@ struct Node {
 
 ---
 
-## Trait / Impl 检查 (E0020–E0030)
+## Trait / Impl 检查 (E0020–E0030, E0047)
 
 <a id="e0020"></a>
 ### E0020 — trait 重复方法
@@ -339,6 +343,17 @@ trait Foo { fun bar() -> i32; }
 impl Foo for Point {
     fun bar() -> bool { true }  // E0030: return type mismatch
 }
+```
+
+<a id="e0047"></a>
+### E0047 — trait 实现重叠
+同一个 trait 不能有两个对同一组类型参数都适用的实现。泛型实现与其覆盖的具体实现也会冲突。
+```riddle
+trait Foo {}
+struct Point {}
+
+impl Foo for Point {}
+impl Foo for Point {}  // E0047: conflicting implementations
 ```
 
 ---

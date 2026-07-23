@@ -214,10 +214,12 @@ prelude 直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`
 - `#[lang = "add"]` 到 `#[lang = "shr"]`：用户类型的算术、位运算和移位会分派到对应 trait 方法；标量 impl 的方法调用直接降为 MIR 运算；
 - `#[lang = "neg"]` 和 `#[lang = "not"]`：用户类型的一元负号和逻辑非会分派到对应 trait 方法；标量 impl 的方法调用直接降为 MIR 运算；
 - `#[lang = "add_assign"]` 到 `#[lang = "shr_assign"]`：用户类型的复合赋值会分派到对应 trait 方法；标量 impl 的方法调用直接降为 MIR 的读取、运算和写回；
-- `#[lang = "partial_eq"]`：用户类型使用 `==` / `!=` 时需要满足 `PartialEq`；
-- `#[lang = "partial_ord"]`：用户类型使用 `<`、`>`、`<=`、`>=` 时需要满足 `PartialOrd`。
+- `#[lang = "partial_eq"]`：用户类型的 `==` / `!=` 分派到 `PartialEq::eq` / `ne`；
+- `#[lang = "partial_ord"]`：用户类型的 `<`、`>`、`<=`、`>=` 分派到 `PartialOrd::lt`、`gt`、`le`、`ge`。
 
-`Clone::clone`、`PartialEq::eq`、`PartialOrd::partial_cmp`、`Ord::cmp` 和各运算 trait 方法可以直接调用。带受支持 lang 标记的标量运算方法不会生成 `add__i64` 一类 C 包装函数，而是生成原生 C 运算表达式。未标记的同名 trait 仍按普通方法编译；用户类型的非比较运算符会调用对应 trait impl 方法。
+`Clone::clone`、`PartialEq::eq`、`PartialOrd::partial_cmp`、`Ord::cmp` 和各运算 trait 方法可以直接调用。带受支持 lang 标记的标量运算方法不会生成 `add__i64` 一类 C 包装函数，而是生成原生 C 运算表达式。未标记的同名 trait 仍按普通方法编译；用户类型的运算符会调用对应 trait impl 或默认方法。
+
+二元、复合赋值和比较 trait 支持 `Rhs = Self` 默认类型参数以及异构右操作数 impl；泛型约束中的运算符调用在单态化后静态选择具体 impl。赋值求值顺序与 Rust 一致：普通赋值和内建复合赋值先右后左，重载复合赋值先左后右。
 
 ### 所有权、移动和逃逸
 
