@@ -134,6 +134,18 @@ where T: Marker
 
 `impl` 上的 `where` 约束会检查 Paterson condition：约束必须严格小于被实现的类型，避免递归 trait 求解无限增长。
 
+Trait impl 还遵循孤儿规则：当前包可以自由实现自己定义的 trait；实现依赖包或标准库的 trait 时，`Self` 或 trait 类型参数中必须有当前包定义的结构体或枚举，并且第一个本地类型之前不能出现未被类型构造器覆盖的泛型参数。引用会传递本地性但不会覆盖其中的泛型参数，类型别名则按其底层类型判断。违反规则会报告 `E0048`。
+
+给结构体或枚举标注 `#[fundamental]` 会让它在孤儿规则判定中变得透明——只要它的某个类型参数是本地类型，整体就视为本地，等价于内置的 `&T`。标准库的智能指针类型可借此让 `impl ForeignTrait for FundBox<LocalType>` 这样的写法合法：
+
+```riddle
+#[fundamental]
+struct FundBox<T> { value: T }
+
+// FundBox 透明，FundBox<Local> 视为本地类型
+impl ForeignTrait for FundBox<Local> {}
+```
+
 标准库比较 trait 也使用同一套父 trait 关系：`Eq: PartialEq`、`PartialOrd: PartialEq`、`Ord: Eq + PartialOrd`。
 
 ## 内置 Trait

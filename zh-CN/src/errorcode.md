@@ -250,7 +250,7 @@ struct Node {
 
 ---
 
-## Trait / Impl 检查 (E0020–E0030, E0047)
+## Trait / Impl 检查 (E0020–E0030, E0047–E0048)
 
 <a id="e0020"></a>
 ### E0020 — trait 重复方法
@@ -354,6 +354,14 @@ struct Point {}
 
 impl Foo for Point {}
 impl Foo for Point {}  // E0047: conflicting implementations
+```
+
+<a id="e0048"></a>
+### E0048 — impl 违反孤儿规则
+当前包只能实现自己定义的 trait，或为自己定义的名义类型实现外部 trait。实现外部 trait 时，`Self` 和 trait 类型参数中必须出现本地类型；在第一个本地类型之前不能出现未被类型构造器覆盖的泛型参数。引用会传递本地性，但不会覆盖其中的泛型参数。标注了 `#[fundamental]` 的类型是透明的：当其某个类型参数为本地类型时，整体也视为本地（与 `&T` 行为一致），因此可以为 `#[fundamental]` 外部类型包裹本地类型的形式实现外部 trait。
+```riddle
+use external::{Show, Point};
+impl Show for Point {}  // E0048
 ```
 
 ---
