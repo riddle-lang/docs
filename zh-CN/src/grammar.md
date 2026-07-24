@@ -170,7 +170,8 @@ path = ("::")? (ident | "self" | "super" | "crate")
        ("::" (ident | "self" | "super" | "crate"))*;
 
 ty = attribute* (
-     path type_args?
+     "!"
+   | path type_args?
    | "&" "mut"? ty
    | "&&" ty
    | "*" ("const" | "mut") ty
@@ -193,9 +194,9 @@ binop = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^=" | "<<=" | ">
 
 literal = int_lit | float_lit | string_lit | char_lit | bool_lit;
 
-int_lit = [0-9]+ ("i8" | "i16" | "i32" | "i64" | "i128" | "isize"
-                | "u8" | "u16" | "u32" | "u64" | "u128" | "usize")?;
-float_lit = [0-9]+ ("." [0-9]+)? ([eE] [+-]? [0-9]+)? ("f16" | "f32" | "f64" | "f128")?;
+int_lit = [0-9]+ ("i8" | "i16" | "i32" | "i64" | "isize"
+                | "u8" | "u16" | "u32" | "u64" | "usize")?;
+float_lit = [0-9]+ ("." [0-9]+)? ([eE] [+-]? [0-9]+)? ("f32" | "f64")?;
 string_lit = "\"" ... "\"" | "r" "#"* "\"" ... "\"" "#"*;
 char_lit = "'" ... "'";
 bool_lit = "true" | "false";
