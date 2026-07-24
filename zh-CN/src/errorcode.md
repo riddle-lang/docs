@@ -364,6 +364,30 @@ use external::{Show, Point};
 impl Show for Point {}  // E0048
 ```
 
+<a id="e0049"></a>
+### E0049 — 默认 std 模式下使用内部属性
+默认加载标准库时，`#[lang = "..."]` 和 `#[fundamental]` 只允许出现在随编译器附加的标准库中，用户包使用这些属性会被拒绝。来源检查优先于属性格式和目标检查，因此用户包中的任何用法都统一报告 `E0049`。使用 `--no-std` 时不附加内置标准库，参与编译的包可以自行定义 lang item 和 `#[fundamental]` 类型。
+```riddle
+#[lang = "copy"]  // E0049: `#[lang = "copy"]` is reserved for the standard library
+trait MyCopy {}
+```
+```riddle
+#[fundamental]  // E0049: `#[fundamental]` is reserved for the standard library
+struct MyBox<T> { value: T }
+```
+
+<a id="e0053"></a>
+### E0053 — lang item 错误
+自定义 core 中的 lang item 必须使用已知名称、标注在 trait 上并满足对应的固定签名。缺少字符串值、错误目标、错误签名、同一 lang item 被定义两次，或同一个 trait 标注多个 lang item，都会报告 `E0053`。`#[fundamental]` 只能以不带值的形式标注结构体或枚举，形式或目标错误时也报告 `E0053`。
+```riddle
+#[lang = "unknown"]  // E0053: unknown lang item
+trait Foo {}
+```
+```riddle
+#[lang = "copy"] trait A {}
+#[lang = "copy"] trait B {}  // E0053: lang item `copy` defined more than once
+```
+
 ---
 
 ## HIR 降级与名字解析 (E0040, E0050–E0052)
