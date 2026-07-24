@@ -39,7 +39,7 @@ MIR（Mid-level IR）是 SSA 形式的中间表示，位于类型检查和代码
 - **值构造**：`StructValue`、`SparseStructValue`、`ArrayValue`、`TupleValue`；枚举使用稀疏初始化保证不同变体的 payload 槽位稳定；
 - **类型转换**：`IntToInt`、`IntToFloat`、`FloatToInt`、`FloatToFloat`、`BoolToInt`、`IntToBool`、`IntToPtr`、`PtrToPtr`；
 - **比较操作**：`Cmp` 支持 `Eq`、`Neq`、`Lt`、`Gt`、`LtEq`、`GtEq`。
-- **函数值**：可调用值统一为 `{ call, env }`，`FunctionRef` 取得隐藏函数或命名函数适配器地址，`CallIndirect` 传入环境后调用；捕获匿名函数的环境使用 GC 堆分配。
+- **函数值**：可调用值统一为 `{ call, env }`，`FunctionRef` 取得隐藏函数或命名函数适配器地址，`CallIndirect` 传入环境后调用；未逃逸的捕获环境使用栈存储，只有越过当前栈帧的环境才提升到 GC 堆。
 
 MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`、`Str`、`Never`、`Void`，并为定长类型提供 `size_bytes()` 布局估算；裸 `Str` 没有独立大小。
 
@@ -233,8 +233,8 @@ prelude 直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`
 - 引用参数支持自动重借用，局部借用可在最后一次使用后结束；
 - 字段访问本身不会移动整个结构体；
 - 数组元素和结构体字段按值移动；
-- 引用逃逸分析决定局部值使用栈分配还是 GC 堆分配。
-- 共享/可变闭包捕获会让对应局部逃逸，但堆分配不会放宽移动和借用检查；
+- 引用逃逸分析通过过程间的“外泄参数 / 返回来源参数”摘要，决定局部值使用栈分配还是 GC 堆分配。
+- 共享/可变闭包捕获会让对应局部获得稳定地址；闭包未逃逸时使用栈存储，闭包越过当前栈帧时才提升到 GC 堆，且分配位置不会放宽移动和借用检查；
 - 非 `Copy` 值捕获会在创建闭包时移动该值，`FnOnce` 闭包调用后不可再次使用。
 
 ### 字符串和 FFI
