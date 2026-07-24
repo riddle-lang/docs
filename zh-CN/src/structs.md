@@ -65,6 +65,12 @@ fun main() -> i32 {
 let b: Box<Box<i32>> = Box { value: Box { value: 1 } };
 ```
 
+也可以在结构体字面量中用 `::<>` 显式指定类型参数，这在无法从上下文推断时很有用：
+
+```riddle
+let b = Box::<i32> { value: 1 };
+```
+
 ## 关联函数
 
 可以在 `impl` 块中给结构体定义关联函数，并通过 `Type::function(...)` 调用：

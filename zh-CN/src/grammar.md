@@ -114,9 +114,11 @@ lambda_param = ident (":" ty)?;
 
 unary = prefix_op unary | postfix;
 
-postfix = primary ( "(" arg_list ")" | "." ident | "[" expression "]" | struct_expr_fields | "." ident "(" arg_list ")" )*;
+postfix = primary ( "<" type_arg_list ">" "(" arg_list ")" | "(" arg_list ")" | "." ident | "[" expression "]" | struct_expr_fields | "::" "<" type_arg_list ">" struct_expr_fields | "." ident "(" arg_list ")" )*;
 
 arg_list = (expression ("," expression)*)?;
+
+type_arg_list = ty ("," ty)*;
 
 primary = literal | path | array_expr | tuple_expr | lambda_expr | "(" expression? ")";
 
