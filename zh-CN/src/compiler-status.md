@@ -111,7 +111,7 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 
 - `if` / `else if` / `else` 表达式；
 - `while` 循环；
-- `for item in iterable` 循环，按 `IntoIterator` / `Iterator` 做类型检查，并在 MIR 中降成 `into_iter` / `next` 调用；
+- `for item in iterable` 循环，按 `IntoIterator` / `Iterator` 做类型检查，并在 MIR 中降成 `into_iter` / `next` 调用；当前元素、迭代器和提前退出路径具有独立的析构作用域；
 - 泛型参数可以通过 `IntoIterator<Item = ..., IntoIter = ...>` bound 使用 `for`，具体 impl 在单态化时解析；
 - 标准库 `Range` 和固定长度数组 `[T; N]` 可直接用于 `for`，数组按值遍历且不要求元素类型为 `Copy`；
 - `match` 表达式，以及枚举、布尔值、`()`、整数、元组和结构体的递归穷尽性检查；
@@ -211,6 +211,7 @@ prelude 直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`
 当前影响编译器语义的 lang trait 包括：
 
 - `#[lang = "copy"]`：被它标记的 `Copy` trait 会被 move checker 用来决定用户类型是否按复制语义处理；
+- `#[lang = "drop"]`：被它标记的 `Drop` trait 提供确定性析构；`Drop + Copy`、直接调用析构方法和从显式 `Drop` 类型移出字段会被拒绝；
 - `#[lang = "add"]` 到 `#[lang = "shr"]`：用户类型的算术、位运算和移位会分派到对应 trait 方法；标量 impl 的方法调用直接降为 MIR 运算；
 - `#[lang = "neg"]` 和 `#[lang = "not"]`：用户类型的一元负号和逻辑非会分派到对应 trait 方法；标量 impl 的方法调用直接降为 MIR 运算；
 - `#[lang = "add_assign"]` 到 `#[lang = "shr_assign"]`：用户类型的复合赋值会分派到对应 trait 方法；标量 impl 的方法调用直接降为 MIR 的读取、运算和写回；
@@ -224,7 +225,7 @@ prelude 直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`
 ### 所有权、移动和逃逸
 
 - 值默认移动；
-- 标量、共享引用、原始指针和函数等内置 Copy 候选默认可复制；`&mut T` 不可复制；
+- 标量、共享引用、原始指针和命名函数项等内置 Copy 候选默认可复制；`&mut T` 与闭包值不可复制；
 - `Option<T>` 和 `Result<T, E>` 仅在所有 payload 类型实现 `Copy` 时实现 `Copy`；
 - 用户类型可以通过实现 `std::marker::Copy` 进入复制语义；编译器会验证结构体字段和所有枚举 payload，并在泛型场景中使用 impl bound；
 - move checker 检查移动后使用；
@@ -233,9 +234,11 @@ prelude 直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`
 - 引用参数支持自动重借用，局部借用可在最后一次使用后结束；
 - 字段访问本身不会移动整个结构体；
 - 数组元素和结构体字段按值移动；
+- `match` 解构按字段记录部分移动，未移动的兄弟字段仍可继续使用；
 - 引用逃逸分析通过过程间的“外泄参数 / 返回来源参数”摘要，决定局部值使用栈分配还是 GC 堆分配。
 - 共享/可变闭包捕获会让对应局部获得稳定地址；闭包未逃逸时使用栈存储，闭包越过当前栈帧时才提升到 GC 堆，且分配位置不会放宽移动和借用检查；
 - 非 `Copy` 值捕获会在创建闭包时移动该值，`FnOnce` 闭包调用后不可再次使用。
+- 需要析构的局部、参数、模式绑定、迭代元素、聚合字段和闭包值使用 drop flag 防止移动后的重复析构；逃逸到 GC 堆只改变地址，仍在所有者结束时确定性运行 `Drop`。
 
 ### 字符串和 FFI
 
@@ -269,9 +272,9 @@ C backend 会把标量 std 运算 trait 的显式方法调用直接输出为 `+`
 - `Default`、格式化和哈希协议尚未提供；
 - 浮点余数尚未支持，`Rem` / `RemAssign` 目前只为整数实现；
 - 泛型目前偏向单态化，尚未覆盖完整 Rust 泛型能力；
-- 字段级可见性尚未做类型检查约束；
 - `riddlec` 的 C backend 只输出 C；`clue build` 会严格使用 `CC`，或自动选择能完成 C11 编译和链接的系统 C 编译器来生成本机可执行文件；
 - 逃逸分析当前粒度是整个局部变量，不做字段级拆分；
 - 闭包当前按整个绑定捕获，不做字段级精确捕获；
+- TODO：数组 `IntoIterator` 当前按索引顺序产出元素；若未来允许自定义数组迭代器乱序移出元素，需要先加入 `MaybeUninit` / `ManuallyDrop` 等价存储和逐槽存活状态，确保剩余元素只析构一次；
 - 函数类型语法目前只能写表示 `Fn` 的 `fun(...) -> T`，尚不能显式声明接收或返回 `FnMut`、`FnOnce`；
 - 这是开发中工具链，不保证语法和 ABI 稳定。

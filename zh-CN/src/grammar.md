@@ -82,7 +82,7 @@ func_decl = "pub"? "unsafe"? "fun" ident generic_params? "(" (param ("," param)*
 
 block = "{" statement* expression? "}";
 
-struct_param = attribute* ident ":" ty;
+struct_param = attribute* "pub"? ident ":" ty;
 
 struct_decl = "struct" ident item_generic_params? where_clause? "{" (struct_param ("," struct_param)* ","?)? "}";
 
