@@ -60,7 +60,7 @@ clue new hello
 cargo run -p riddlec -- --backend c --output hello.c hello/src/main.rid
 ```
 
-C backend 只写出 C 源码，不会调用系统编译器。输出已经包含内置 GC；如需本机可执行文件，可以再运行 `cc hello.c -o hello`，不需要额外 GC 库。
+C backend 只写出调用 `rgc` ABI 的 C 源码，不会调用系统编译器。二进制发行包附带默认 `runtime.c`；如需本机可执行文件，可以运行 `cc hello.c runtime.c -o hello`。`clue build` 会自动完成这一步。
 
 ## 构建文档
 

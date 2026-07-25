@@ -62,17 +62,17 @@
                     },
                     {
                         className: 'number',
-                        begin: /\b(?:\d+\.\d+(?:[eE][+-]?\d+)?|\d+[eE][+-]?\d+|\d+\.)(?:f16|f32|f64|f128)?(?=\W|$)/,
+                        begin: /\b(?:\d+\.\d+(?:[eE][+-]?\d+)?|\d+[eE][+-]?\d+|\d+\.)(?:f32|f64)?(?=\W|$)/,
                         relevance: 0,
                     },
                     {
                         className: 'number',
-                        begin: /\b\d+(?:i8|i16|i32|i64|i128|isize|u8|u16|u32|u64|u128|usize)?\b/,
+                        begin: /\b\d+(?:i8|i16|i32|i64|isize|u8|u16|u32|u64|usize)?\b/,
                         relevance: 0,
                     },
                     {
                         className: 'type',
-                        begin: /\b(?:i8|i16|i32|i64|i128|isize|u8|u16|u32|u64|u128|usize|f16|f32|f64|f128|bool|str|char)\b/,
+                        begin: /\b(?:i8|i16|i32|i64|isize|u8|u16|u32|u64|usize|f32|f64|bool|str|char)\b/,
                         relevance: 0,
                     },
                     {

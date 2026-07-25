@@ -79,6 +79,12 @@ command = "/path/to/riddle-lsp"
 args = ["--no-std"]
 ```
 
+补全默认立即响应。需要在持续输入时合并请求，可追加 `--completion-delay-ms`，单位为毫秒：
+
+```toml
+args = ["--completion-delay-ms", "25"]
+```
+
 检查安装结果：
 
 ```bash
@@ -106,7 +112,7 @@ code --install-extension editors\dist\riddle-vscode.vsix
 ```json
 {
     "riddle.server.path": "/path/to/riddle-lsp",
-    "riddle.server.arguments": []
+    "riddle.server.arguments": ["--completion-delay-ms", "25"]
 }
 ```
 
@@ -162,7 +168,7 @@ Zed 适配当前以 Dev Extension 方式安装。先把 `riddle-zed.zip` 解压�
         "riddle-lsp": {
             "binary": {
                 "path": "/path/to/riddle-lsp",
-                "arguments": []
+                "arguments": ["--completion-delay-ms", "25"]
             }
         }
     }
@@ -178,11 +184,14 @@ Zed 适配当前以 Dev Extension 方式安装。先把 `riddle-zed.zip` 解压�
 | `.rid` 文件识别 | Helix、VS Code、Zed、JetBrains 均支持 |
 | Clue 项目、未保存文件和未打开模块诊断 | 支持 |
 | 解析、类型、move/borrow 诊断 | 支持 |
-| 函数、方法、struct、enum、trait、参数和可变绑定语义高亮 | 支持 |
-| 当前文档中的关键字、类型、全局项和局部变量补全 | 支持 |
-| 字段、实例方法、枚举变体、关联函数和公开标准库导入补全 | 支持 |
+| Clue 项目级函数、方法、struct、enum、trait、参数和可变绑定语义高亮 | 支持 |
+| 跨模块返回类型的局部变量 Inlay Hint | 支持 |
+| Clue 项目中的关键字、类型、全局项、局部变量、模式绑定和导入别名补全 | 支持 |
+| 字段、实例方法、模块项、枚举变体和关联函数补全 | 支持 |
 | 可变闭包绑定 Code Action | 支持 |
-| 跨文件补全、Hover、跳转定义、查找引用 | 尚未实现 |
+| 跨文件补全（包含已打开文件的未保存内容） | 支持 |
+| 增量文档同步与 Semantic Token delta | 支持 |
+| Hover、跳转定义、查找引用 | 尚未实现 |
 | 重命名、格式化 | 尚未实现 |
 
 ## 常见问题
