@@ -70,10 +70,12 @@ source = "runtime/custom_gc.c"
 ```c
 void rgc_init(void *stack_bottom);
 void *rgc_alloc(size_t size);
+void *rgc_realloc(void *ptr, size_t size);
+void rgc_free(void *ptr);
 void rgc_collect(void);
 ```
 
-`rgc_alloc` 返回的地址必须满足普通 C 对象的对齐要求，并且在引用仍可能存在时不能移动。无回收分配器可以忽略 `stack_bottom`，并把 `rgc_collect` 实现为空函数。当前 ABI 不支持移动式 GC、逐对象释放、finalizer 或多线程栈注册。
+`rgc_alloc` 返回的地址必须满足普通 C 对象的对齐要求，并且在引用仍可能存在时不能移动。`rgc_realloc` 与 `rgc_free` 供标准库容器（如 `Vector`）显式管理缓冲区：`rgc_realloc` 迁移并保留原内容，`rgc_free` 立即释放且必须接受空指针；基于 malloc 的分配器可直接委托给 `realloc`/`free`。无回收分配器可以忽略 `stack_bottom`，并把 `rgc_collect` 实现为空函数。当前 ABI 不支持移动式 GC、finalizer 或多线程栈注册。
 
 运行时属于最终进程，因此 `[runtime]` 只允许出现在二进制包；库和依赖包只生成 ABI 调用，不能选择运行时。
 

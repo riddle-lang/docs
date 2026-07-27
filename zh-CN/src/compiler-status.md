@@ -35,13 +35,13 @@ MIR（Mid-level IR）是 SSA 形式的中间表示，位于类型检查和代码
 - **SSA 基本块**：每个函数体由基本块组成，块以 `Terminator`（`Branch`、`CondBranch`、`Return`、`Unreachable`）结束；
 - **Phi 节点**：`InstKind::Phi` 合并来自多个前驱块的值；
 - **分配指令**：`Alloca`（栈分配）和 `HeapAlloc`（GC 堆分配），由逃逸分析结果驱动；
-- **内存操作**：`Load`、`Store`、`FieldPtr`（字段指针）、`IndexPtr`（索引指针）、`ExtractValue`（提取聚合字段）；
+- **内存操作**：`Load`、`Store`、`FieldPtr`（字段指针）、`IndexPtr` / `CheckedIndexPtr`（原始指针索引 / 安全数组与切片索引）、`ExtractValue`（提取聚合字段）；
 - **值构造**：`StructValue`、`SparseStructValue`、`ArrayValue`、`TupleValue`；枚举使用稀疏初始化保证不同变体的 payload 槽位稳定；
 - **类型转换**：`IntToInt`、`IntToFloat`、`FloatToInt`、`FloatToFloat`、`BoolToInt`、`IntToBool`、`IntToPtr`、`PtrToPtr`；
 - **比较操作**：`Cmp` 支持 `Eq`、`Neq`、`Lt`、`Gt`、`LtEq`、`GtEq`。
 - **函数值**：可调用值统一为 `{ call, env }`，`FunctionRef` 取得隐藏函数或命名函数适配器地址，`CallIndirect` 传入环境后调用；未逃逸的捕获环境使用栈存储，只有越过当前栈帧的环境才提升到 GC 堆。
 
-MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`、`Str`、`Never`、`Void`，并为定长类型提供 `size_bytes()` 布局估算；裸 `Str` 没有独立大小。
+MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`、`Slice`、`Str`、`Never`、`Void`，并为定长类型提供 `size_bytes()` 布局估算；裸 `Str` 和 `Slice` 没有独立大小。
 
 ### riddle-lsp
 
@@ -81,17 +81,17 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - `fun(x) { x + 1 }` 匿名函数、结构化函数类型、单态参数推断和闭包捕获；
 - 按用法推断共享、可变和值捕获，并据此检查 `Fn`、`FnMut`、`FnOnce` 调用能力；
 - 显式类型标注；
-- 顶层和 `impl` 内的 `const` 声明（`const NAME: Type = value;`）；
-- 顶层、`impl` 和 `trait` 内的 `type` 别名（含默认关联类型）；
-- 先声明后赋值；
+- 顶层和 `impl` 内的 `const` 声明（`const NAME: Type = value;`），初始化式会做类型、纯表达式和循环检查；
+- 模块和 `impl` 内的有值 `type` 别名，以及 trait 中可省略默认值的关联类型；
+- `let` 支持延迟初始化，首次赋值不要求 `mut`，并检查跨 `if`、`match`、循环的 definite-initialization；未初始化读取报 `E0059`，不可变绑定二次赋值报 `E0031`；
 - 函数定义和函数声明；
 - 泛型函数（类型参数和 const 参数从实参推断，支持 `<T: Trait>` bound、`where` 子句，C backend 单态化）；
 - 函数参数、返回类型、尾表达式和 `return`；
 - 块表达式；
 - 字段访问、函数调用、方法调用；
-- 数组字面量、数组重复表达式 `[value; N]`、数组索引；
+- 数组字面量、数组重复表达式 `[value; N]`、数组与切片安全索引（越界终止并报告运行时错误）；原始指针索引仍需 `unsafe` 且不做边界检查；
 - 结构体字面量和字段简写；
-- 类型转换表达式 `expr as Type`；
+- 类型转换表达式 `expr as Type`；`&str` 可安全转换为 `&[u8]`，`(*const T, usize)` / `(*mut T, usize)` 到 `&[T]`、`&[u8]` 到 `&str` 的 DST 等布局转换仅允许在 `unsafe` 中使用；
 - `unsafe { ... }` 块表达式，以及原始指针解引用和索引的安全上下文检查；
 - `unsafe fun`、`unsafe fun(...) -> T` 函数类型和单向安全函数转换；
 - `unsafe extern "C"` 导入块，块内默认不安全并支持 `safe fun` 显式安全声明；
@@ -107,13 +107,15 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - 复合赋值：`+=`、`-=`、`*=`、`/=`、`%=`、`&=`、`|=`、`^=`、`<<=`、`>>=`；
 - 一元：`+`、`-`、`&`、`&mut`、`*`、`!`。
 
+C backend 对整数回绕、除零、最小值除以 `-1`、移位计数和浮点转整数使用确定性规则：整数算术按位宽回绕，错误除法终止，移位计数按位宽取模并对有符号右移使用算术语义，`NaN` 转整数为零且溢出值钳制到边界。
+
 ### 控制流和模式
 
 - `if` / `else if` / `else` 表达式；
 - `while` 循环；
 - `for item in iterable` 循环，按 `IntoIterator` / `Iterator` 做类型检查，并在 MIR 中降成 `into_iter` / `next` 调用；当前元素、迭代器和提前退出路径具有独立的析构作用域；
 - 泛型参数可以通过 `IntoIterator<Item = ..., IntoIter = ...>` bound 使用 `for`，具体 impl 在单态化时解析；
-- 标准库 `Range` 和固定长度数组 `[T; N]` 可直接用于 `for`，数组按值遍历且不要求元素类型为 `Copy`；
+- 标准库 `Range`、固定长度数组 `[T; N]`、共享切片 `&[T]` 和可变切片 `&mut [T]` 可直接用于 `for`，数组按值遍历且不要求元素类型为 `Copy`；
 - `match` 表达式，以及枚举、布尔值、`()`、整数、元组和结构体的递归穷尽性检查；
 - 非穷尽整数匹配会报告未覆盖的连续值区间；
 - `match` guard，guard 失败后继续检查后续 arm，且带 guard 的 arm 不计入静态穷尽性；
@@ -132,6 +134,8 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - `bool`、`char`、`()`、`!`；
 - `str`：不定长字符串类型，仅能作为引用、原始指针或 `impl` 的目标；
 - `&str`：引用 `str` 的定长胖指针值；
+- `[T]`：不定长切片类型，仅能位于引用或原始指针后；
+- `&[T]` / `&mut [T]`：携带元素地址和长度的胖指针，可由对应可变性的数组引用自动转换；
 - 引用：`&T`、`&mut T`；
 - 原始指针类型：`*const T`、`*mut T`；
 - 元组类型和元组表达式，例如 `(2, 3)` 与 `(2,)`；
@@ -195,11 +199,13 @@ prelude 直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`
 
 - `std::option::Option<T>`，提供 `is_some`、`is_none`、`unwrap_or` 和 `or`；
 - `std::result::Result<T, E>`，提供 `is_ok`、`is_err`、`unwrap_or`、`ok` 和 `err`；
-- `std::io::{print, Display}`，`print` 当前支持 `&str` 和 `i32`，输出时不自动换行；
-- `std::string::String` 提供 `new`、`from_str`、`as_str`、`len`、`capacity`、`is_empty`、`push_str` 和 `clear`；同一模块为 `str` 提供 `len`、`is_empty` 和返回 `Option<u8>` 的 `byte_at`；
-- `std::vector::Vector<T>` 提供 `new`、`len`、`capacity`、`is_empty`、`push`、`pop`、`get`、`get_mut`、`clear` 和按值迭代；
+- `std::io::{print, println, Display}` 当前支持 `&str` 和 `i32`；
+- `std::string::String` 提供 `new`、`from_str`、`as_str`、`len`、`capacity`、`is_empty`、`push_str` 和 `clear`；同一模块按 Rust 风格为 `str` 提供 `len`、`is_empty` 和 `as_bytes`；
+- `std::vector::Vector<T>` 提供 `new`、`len`、`capacity`、`is_empty`、`push`、`pop`、`get`、`get_mut`、`clear`、`as_slice` 和按值迭代；缓冲区通过运行时 `rgc_realloc`、`rgc_free` 管理，失败条件统一调用 `panic`；
+- `Vector<T>` 会拒绝零大小元素并检查容量乘法溢出；原始指针目前不能比较空值，因此尚不能在标准库内处理 C 分配失败；
 - `std::iter::{Iterator, IntoIterator}`；
-- `std::array` 中的数组迭代器，并兼容重导出为 `ArrayIter<T, const N>`；
+- `std::slice::{SliceIter, SliceIterMut}`，并为 `[T]` 提供长度、边界检查访问、原始指针访问和借用迭代；
+- `std::array` 中的按值、共享借用和可变借用数组迭代器，并兼容重导出为 `ArrayIter<T, const N>`；
 - `std::ops::{Range, range(start, end)}`；
 - `std::marker::Copy`；
 - `std::clone::Clone`；
@@ -230,7 +236,7 @@ prelude 直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`
 - 用户类型可以通过实现 `std::marker::Copy` 进入复制语义；编译器会验证结构体字段和所有枚举 payload，并在泛型场景中使用 impl bound；
 - move checker 检查移动后使用；
 - 借用期间移动会报错；
-- 方法和函数返回值会传播引用来源，包含 `Option<&T>` 等泛型包装；
+- 方法和函数返回值会传播引用来源，包含 `Option<&T>` 等泛型包装；元组和数组的来源按元素保留，模式解构不会让无关元素互相延长借用；
 - 引用参数支持自动重借用，局部借用可在最后一次使用后结束；
 - 字段访问本身不会移动整个结构体；
 - 数组元素和结构体字段按值移动；
@@ -245,9 +251,11 @@ prelude 直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`
 - `str` 是不定长类型，不能作为局部变量、参数、返回值或普通字段；
 - `&str` 是 `{ ptr, len }` 胖指针，字符串字面量的类型也是 `&str`；
 - 字符串字面量支持 `"..."`、`r"..."`、`r#"..."#` 和 `r###"..."###`；
-- `extern "C"` 支持单函数声明、声明块和带函数体的导出定义；
+- `extern "C"` 支持声明块和带函数体的导出定义；
 - C 导入中的 `&str` 映射为 `const char*`，带函数体的导出定义保留 `{ ptr, len }`；
-- C backend 内置 `str_len` 和 `str_byte` 两个字符串 helper。
+- C backend 不按函数名提供任何内置 C helper，所有 `extern "C"` 声明都按普通外部符号生成；
+- 标准库通过 `as_bytes().len()` 实现 `str::len`，并用受限的同布局转换实现 `&str` / `&[u8]` 转换；`String::as_str` 先借用 `Vector<u8>` 为 `&[u8]`，再通过普通标准库 unsafe 函数转换为 `&str`，不使用函数 builtin，也不生成或链接 C helper；
+- `String` 以 `Vector<u8>` 持有 UTF-8 字节，支持追加、清空和借用为 `&str`；存活的 `as_str()` 视图会阻止可能使其失效的可变操作。
 
 ## 后端状态
 
@@ -257,7 +265,7 @@ prelude 直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`
 
 C backend 实现统一的 `Backend` trait：`compile(&mut self, module: &Module) -> Result<String, Error>`。
 
-C backend 会把标量 std 运算 trait 的显式方法调用直接输出为 `+`、`-`、`*`、`&`、`<<` 等 C 运算，不声明或定义对应的 primitive wrapper；用户类型的 trait 方法仍输出普通 C 函数。
+C backend 会把标量 std 运算 trait 的显式方法调用直接输出为带确定性溢出、除法和移位保护的 `+`、`-`、`*`、`&`、`<<` 等 C 表达式，不声明或定义对应的 primitive wrapper；用户类型的 trait 方法仍输出普通 C 函数。
 
 ## 工具状态
 

@@ -30,9 +30,9 @@ statement =
 
 extern_block = "unsafe" "extern" string_lit "{" (extern_func_sig ";")* "}";
 
-extern_func_sig = ("safe" | "unsafe")? func_sig;
+extern_func_sig = ("safe" | "unsafe")? "fun" ident "(" (param ("," param)*)? ")" ("->" ty)? ";";
 
-extern_fn_decl = "pub"? "unsafe"? "extern" string_lit func_decl;
+extern_fn_decl = "pub"? "unsafe"? "extern" string_lit func_def;
 
 // == module / use ==
 
@@ -50,14 +50,15 @@ enum_decl = "enum" ident item_generic_params? where_clause? "{" (enum_variant ("
 enum_variant = attribute* ident ("(" type_list? ")")? ("{" struct_field_list? "}")?;
 
 trait_decl = "trait" ident (":" generic_bound ("+" generic_bound)*)? "{" trait_item* "}";
-trait_item = attribute* (func_decl | type_alias_decl);
+trait_item = attribute* (func_decl | assoc_type_decl);
 
 impl_decl = "impl" generic_params? ty ("for" ty)? where_clause? "{" impl_item* "}";
 impl_item = attribute* (func_decl | type_alias_decl | const_decl);
 
 func_sig = "unsafe"? "fun" ident generic_params? "(" (param ("," param)*)? ")" ("->" ty)? where_clause?;
-type_alias_decl = "type" ident ("=" ty)? ";";
-const_decl = "const" ident ":" ty ("=" expression)? ";";
+type_alias_decl = "type" ident "=" ty ";";
+assoc_type_decl = "type" ident ("=" ty)? ";";
+const_decl = "const" ident ":" ty "=" expression ";";
 
 item_generic_params = "<" item_generic_param ("," item_generic_param)* ">";
 item_generic_param = ident | "const" ident ":" ty;
@@ -74,10 +75,11 @@ type_list = ty ("," ty)* ","?;
 
 // == normal statements ==
 
-var_decl = "let" "mut"? ident (":" ty)? ("=" expression)? ";";
+var_decl = "let" pattern (":" ty)? ("=" expression)? ";";
 
 param = attribute* ((("&" "mut"?)? "self") | (ident ":" ty));
 
+func_def = "fun" ident generic_params? "(" (param ("," param)*)? ")" ("->" ty)? where_clause? block;
 func_decl = "pub"? "unsafe"? "fun" ident generic_params? "(" (param ("," param)*)? ")" ("->" ty)? where_clause? (block | ";");
 
 block = "{" statement* expression? "}";
@@ -134,7 +136,7 @@ struct_expr_fields = "{" (struct_expr_field ("," struct_expr_field)* ","?)? "}";
 
 struct_expr_field = ident (":" expression)?;
 
-pattern = attribute* ("_" | ident | literal | path | tuple_pattern | struct_pattern | enum_pattern);
+pattern = attribute* ("_" | "mut"? ident | literal | path | tuple_pattern | struct_pattern | enum_pattern);
 
 tuple_pattern = "(" (pattern ("," pattern)* ","?)? ")";
 struct_pattern = path "{" (field_pattern ("," field_pattern)* ","?)? "}";
@@ -175,7 +177,7 @@ ty = attribute* (
    | "&" "mut"? ty
    | "&&" ty
    | "*" ("const" | "mut") ty
-   | "[" ty ";" expression "]"
+   | "[" ty (";" expression)? "]"
    | int_lit
    | "unsafe"? "fun" "(" type_list? ")" ("->" ty)?
    | "(" (ty ("," ty)* ","?)? ")"
@@ -203,3 +205,5 @@ bool_lit = "true" | "false";
 
 ident = [a-zA-Z_][a-zA-Z0-9_]*;
 ```
+
+`let` 可以在声明处初始化，也可以省略初始化式并稍后赋值：`let pattern = expression;`、`let pattern: Type;` 和可由首次赋值推断类型的 `let pattern;` 都是合法语法。延迟初始化的绑定必须在每条到达使用点的路径上先完成赋值；否则会报告 `E0059`。`type Name;` 只用于 trait 中声明关联类型；模块和 `impl` 中的类型别名需要写出 `= Type`。

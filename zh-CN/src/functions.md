@@ -117,14 +117,16 @@ where T: Named
 }
 ```
 
-调用泛型函数时，编译器会从实参推断类型参数；也可以在函数名后用 `<>` 显式指定：
+调用泛型函数时，编译器会从实参推断类型参数；也可以在函数名后用 Rust 风格的 `::<...>` 显式指定：
 
 ```riddle
 fun main() {
-    let n = id<i32>(1);   // 显式指定 T = i32
-    let b = id<bool>(true);
+    let n = id::<i32>(1);   // 显式指定 T = i32
+    let b = id::<bool>(true);
 }
 ```
+
+方法的显式类型实参使用相同语法，例如 `value.convert::<Target>()`。类型位置仍然写作 `Vector<T>`，不需要 `::`。
 
 编译器会检查推断或显式给出的实参类型是否满足 bound；函数体内可以通过 bound 调用 trait 方法，C backend 会在单态化后静态分派到具体 impl。
 

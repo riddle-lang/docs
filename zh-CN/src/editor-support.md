@@ -215,3 +215,9 @@ Zed 适配当前以 Dev Extension 方式安装。先把 `riddle-zed.zip` 解压�
 ### JetBrains 中没有诊断或高亮
 
 确认 IDE 是 2026.1 或更高版本，并把 Gradle JVM 设为 JDK 21 或更高版本；在 IDE 内置终端运行 `riddle-lsp --version`。如果命令不可用，修复 `PATH` 后完全退出并重新启动 IDE；仍有问题时通过 **Help | Show Log** 查看 LSP 启动错误。
+
+### 如果上述的一切都不起作用？
+
+请加入我们的 QQ 群: 677741637
+
+或在 Github 上提交 Issue 来寻求帮助

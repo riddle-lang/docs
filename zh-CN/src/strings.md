@@ -69,21 +69,22 @@ fun main() {
 
 ## 常用方法
 
-`&str` 通过标准库提供字节长度、空值判断和带边界检查的字节访问：
+`&str` 通过标准库提供字节长度、空值判断和 Rust 风格的字节切片视图：
 
 ```riddle
 let text: &str = "hello";
-let length = text.len();             // 5usize
-let empty = text.is_empty();         // false
-let first = text.byte_at(0usize);    // Some(104u8)
-let missing = text.byte_at(5usize);  // None
+let length = text.len();                    // 5usize
+let empty = text.is_empty();                // false
+let bytes = text.as_bytes();                // &[u8]
+let first = bytes.get(0usize);              // Some(&104u8)
+let missing = bytes.get(5usize);            // None
 ```
 
-`len` 返回 UTF-8 字节数，不是字符数。`byte_at` 返回 `Option<u8>`，索引越界时返回 `None`。
+`len` 返回 UTF-8 字节数，不是字符数。`as_bytes` 不复制数据，返回共享字节切片；字节访问复用切片的 `get`，索引越界时返回 `None`。
 
 ## 可增长的 `String`
 
-`String` 是由运行时管理的 UTF-8 字节缓冲区，可以从 `&str` 创建并继续追加字符串切片：
+`String` 使用 `Vector<u8>` 持有 UTF-8 字节，可以从 `&str` 创建并追加字符串切片：
 
 ```riddle
 let mut text = String::from_str("hello");
@@ -97,7 +98,9 @@ text.clear();
 let empty = text.is_empty();   // true
 ```
 
-`String::new()` 创建空字符串。`as_str()` 返回指向当前缓冲区的 `&str`；后续修改 `String` 前不应继续使用旧视图。
+`String::new()` 创建空字符串。`as_str()` 返回借用当前缓冲区的 `&str`；只要该视图之后仍会使用，借用检查器就会拒绝 `push_str`、`clear` 等可变操作。
+
+`String::as_str()` 先通过 `Vector::as_slice()` 取得 `&[u8]`，再调用标准库私有的 `unsafe fun from_utf8_unchecked`，用 `&[u8] as &str` 保留相同的数据指针和长度。它不写胖指针私有字段，不使用编译器 builtin，也不会生成、声明或链接 C helper；调用方必须保证字节是合法 UTF-8。
 
 ## C backend 中的 `&str`
 
@@ -110,10 +113,12 @@ struct { const char* ptr; size_t len; }
 当 `&str` 传给只有声明的外部 C 导入时，C backend 会取其中的 `ptr`，按 `const char*` 传给 C：
 
 ```riddle
-extern "C" fun puts(s: &str) -> i32;
+unsafe extern "C" {
+    fun puts(s: &str) -> i32;
+}
 
 fun main() {
-    puts("hello from riddle via FFI!\n");
+    unsafe { puts("hello from riddle via FFI!\n"); }
 }
 ```
 
@@ -125,7 +130,7 @@ C 导入返回 `&str` 时，返回的 `const char*` 必须以 NUL 结尾，C bac
 |------|------|--------|
 | `str` | DST，总是通过引用使用 | 不定长，总是通过引用使用 |
 | `&str` | 胖指针 `{ ptr, len }` | 胖指针 `{ ptr, len }` |
-| `String` | 堆分配的可增长字符串 | 运行时管理的可增长 UTF-8 字节缓冲区 |
+| `String` | 堆分配的可增长字符串 | `Vector<u8>` 持有的可增长 UTF-8 字节串 |
 | 字面量类型 | `&'static str` | `&str` |
 | raw string | `r#"..."#` | `r#"..."#` |
 | 生命周期 | 需要标注生命周期 | 无生命周期标注，逃逸分析自动处理 |

@@ -44,6 +44,35 @@ fun main() {
 
 `mut` 是一种提醒：这个绑定后面会发生变化。读代码的人看到 `mut`，就知道需要关注这个值的更新路径。
 
+## 解构绑定
+
+`let` 后面写的是一个模式，所以可以一次拆开元组或结构体：
+
+```riddle
+struct Point { x: i32, y: i32 }
+
+fun main() {
+    let (a, b) = (1, 2);
+    let Point { x, y } = Point { x: 3, y: 4 };
+    let (_, second) = (10, 20); // 用 `_` 丢弃不需要的部分
+    print(a + b + x + y + second)
+}
+```
+
+`mut` 属于单个绑定，而不是整条 `let`。想让其中一个元素可变，就写在它自己前面：
+
+```riddle
+fun main() {
+    let (mut count, step) = (0, 5);
+    count = count + step;
+    print(count)
+}
+```
+
+`let mut (count, step) = ...` 不是合法写法。
+
+`let` 没有备选分支，所以它的模式必须匹配该类型的每一个值。枚举变体、字面量这类只覆盖部分取值的模式会报告 `E0057`，需要改用 `match`。
+
 ## 类型标注
 
 变量可以写类型标注：
@@ -57,19 +86,51 @@ fun main() {
 
 很多时候类型可以从初始化表达式推导出来。需要让意图更清楚，或者编译器无法推导时，可以写出类型。
 
-## 只声明不初始化
+## 延迟初始化
 
-Riddle 允许先声明一个变量，再在后面赋值：
+`let` 可以先声明、后赋值。带类型标注的绑定直接使用标注类型；没有标注时，编译器会从首次赋值推断类型：
 
 ```riddle
 fun main() {
     let value: i32;
     value = 10;
-    print(value)
+
+    let inferred;
+    inferred = 20;
 }
 ```
 
-这种写法适合分支初始化等场景。不过在变量被读取之前，它必须已经被初始化。
+不可变绑定的首次赋值不需要 `mut`；如果要在首次赋值后再次赋值，声明时必须写 `mut`：
+
+```riddle
+let once: i32;
+once = 1;             // OK
+once = 2;             // E0031
+
+let mut many: i32;
+many = 1;
+many = 2;             // OK
+```
+
+使用前没有在所有路径上完成赋值会报告 `E0059`。分支需要分别初始化：
+
+```riddle
+fun choose(flag: bool) -> i32 {
+    let value: i32;
+    if flag { value = 10; } else { value = 20; }
+    value
+}
+```
+
+如果某条路径没有赋值，后续使用就是错误：
+
+```riddle
+fun incomplete(flag: bool) -> i32 {
+    let value: i32;
+    if flag { value = 10; }
+    value // E0059
+}
+```
 
 ## const 常量
 
