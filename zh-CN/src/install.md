@@ -15,6 +15,17 @@ cargo --version
 
 [GitHub Releases](https://github.com/riddle-lang/riddle/releases) 提供 Windows、Linux 和 macOS 的预编译 zip。下载对应平台和架构的文件，解压后把二进制所在目录加入 `PATH`。发布包包含 `clue`、`riddle-lsp`、`riddlec`、README 和 Apache-2.0 许可证。
 
+使用 ridup 时，宿主工具链按完整 triple 安装，例如 `stable-x86_64-pc-windows-msvc`，并保留 `stable` 作为便捷名称。交叉目标单独安装：
+
+```bash
+ridup target add aarch64-unknown-linux-gnu
+ridup target list
+```
+
+首版只支持 `x86_64-unknown-linux-gnu`、`aarch64-unknown-linux-gnu`、`i686-unknown-linux-gnu`、`x86_64-pc-windows-msvc`、`i686-pc-windows-msvc`、`aarch64-pc-windows-msvc` 和 `aarch64-apple-darwin`，其他 triple 会被拒绝。
+
+`target add` 会先安装 Riddle runtime，再询问是否安装匹配的 LLVM/Clang。目标组件已安装和 C 工具链已就绪是两个独立状态；Linux 还需要目标 sysroot，Windows MSVC 目标需要 Windows SDK 与 MSVC 库，macOS 需要 Apple SDK。缺少这些系统组件时仍可运行 `clue check`，也可用 `riddlec` 生成可移植 C，但 Clue 不会把该目标报告为可链接状态。
+
 ## 从源码构建
 
 找一个适合存放代码的目录，执行下述命令：
@@ -50,7 +61,7 @@ riddle-lsp --version
 当前命令行入口是 `riddlec`：
 
 ```bash
-riddlec [--verbose] [--backend c] [--output <file>] <file>...
+riddlec [--verbose] [--backend c] [--target <triple>] [--output <file>] <file>...
 ```
 
 例如，创建一个项目，再把入口文件通过 C backend 生成 C 源码：

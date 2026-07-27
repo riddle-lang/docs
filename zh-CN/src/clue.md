@@ -5,14 +5,35 @@
 ```bash
 clue init [--bin|--lib] <path>
 clue new [--bin|--lib] <path>
-clue check [path]
-clue build [path]
-clue run [path] [-- <args>...]
+clue check [path] [--target <triple>]
+clue build [path] [--target <triple>]
+clue run [path] [--target <triple>] [-- <args>...]
 ```
 
 `clue init` 在指定目录中初始化项目，`clue new` 创建新目录和项目；二者都会生成清单、入口源码和忽略文件。它们不会覆盖已有的 `Clue.toml` 或目标入口源码。`clue check` 检查整个项目但不生成 C，`clue build` 构建项目，`clue run` 先构建二进制项目再运行生成的程序。
 
 二进制项目会保留 `.clue/build/<package-name>.c` 和默认的 `<package-name>.runtime.c`，并在同一目录生成 `<package-name>`；Windows 下扩展名为 `.exe`。设置 `CC` 时 Clue 会严格使用它，失败时不会静默回退；未设置时会探测 `cc`、`gcc`、`clang`、带版本后缀的 GCC/Clang，Windows 还会探测 `clang-cl` 和 `cl`。候选必须能够完成一次 C11 编译和链接。库项目仍只生成 C 源码，不会选择或链接运行时。
+
+## 目标平台
+
+Clue 按 `--target`、`RIDDLE_TARGET`、`Clue.toml` 的 `[build].target`、宿主平台的顺序选择目标：
+
+```toml
+[build]
+target = "aarch64-unknown-linux-gnu"
+```
+
+当前严格限制为以下 7 个目标：
+
+- `x86_64-unknown-linux-gnu`
+- `aarch64-unknown-linux-gnu`
+- `i686-unknown-linux-gnu`
+- `x86_64-pc-windows-msvc`
+- `i686-pc-windows-msvc`
+- `aarch64-pc-windows-msvc`
+- `aarch64-apple-darwin`
+
+交叉构建二进制项目之前需要运行 `ridup target add <triple>`。目标组件提供 Riddle runtime，但不等于 C 工具链已经就绪：Linux 需要 sysroot，Windows MSVC 目标需要 Windows SDK 与 MSVC 库，macOS 需要 Apple SDK。`clue run` 只允许运行宿主目标；交叉产物应复制到目标系统运行。
 
 ## 项目布局
 
