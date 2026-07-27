@@ -42,6 +42,12 @@ cargo install --path . --features install-bins --force --target-dir "${TMPDIR:-/
 cargo install --path . --features install-bins --force --target-dir "$env:TEMP\riddle-install"
 ```
 
+如果只验证这三个安装二进制的构建，请限定根发行包，避免 workspace 中的同名开发包重复输出：
+
+```bash
+cargo build -p riddle --release --features install-bins --bins
+```
+
 如果只想在源码目录中临时运行，也可以使用：
 
 ```bash

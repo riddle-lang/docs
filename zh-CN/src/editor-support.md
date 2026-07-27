@@ -24,7 +24,7 @@ pwsh -File editors\package.ps1
 bash editors/package.sh
 ```
 
-脚本需要 Node.js、npm、JDK 21 或更高版本和网络连接，Bash 版本还需要 `zip` 命令。首次构建 JetBrains 插件时，Gradle wrapper 会下载 Gradle 9 和 IntelliJ Platform 2026.1 SDK。脚本会在 `editors/dist` 中生成：
+脚本需要 Node.js、npm、JDK 25 或更高版本和网络连接，Bash 版本还需要 `zip` 命令。首次构建 JetBrains 插件时，Gradle wrapper 会下载 Gradle 9 和 IntelliJ Platform 2026.1 SDK。脚本会在 `editors/dist` 中生成：
 
 | 文件 | 用途 |
 |------|------|
@@ -214,7 +214,7 @@ Zed 适配当前以 Dev Extension 方式安装。先把 `riddle-zed.zip` 解压�
 
 ### JetBrains 中没有诊断或高亮
 
-确认 IDE 是 2026.1 或更高版本，并把 Gradle JVM 设为 JDK 21 或更高版本；在 IDE 内置终端运行 `riddle-lsp --version`。如果命令不可用，修复 `PATH` 后完全退出并重新启动 IDE；仍有问题时通过 **Help | Show Log** 查看 LSP 启动错误。
+确认 IDE 是 2026.1 或更高版本，并把 Gradle JVM 设为 JDK 25 或更高版本；在 IDE 内置终端运行 `riddle-lsp --version`。如果命令不可用，修复 `PATH` 后完全退出并重新启动 IDE；仍有问题时通过 **Help | Show Log** 查看 LSP 启动错误。
 
 ### 如果上述的一切都不起作用？
 
