@@ -94,6 +94,8 @@ fun main() {
 
 `std/lib.rid` 已经提供 `std::marker::Copy`，普通程序不需要自己声明这个 trait。只有带 `#[lang = "copy"]` 的 Copy trait 会被 move checker 识别。
 
+解引用不会改变按值使用的规则。`let value = *reference` 会读取 `reference` 指向的 `T`：`T: Copy` 时得到副本；否则因为引用不拥有 `T`，从解引用位置搬出值会报 `E0308`。如果要修改原值，应保留 `&mut T`，例如 `let mut point = f(&mut p); point.x = 1;`；`let value = *point` 则不是引用别名。
+
 ## 模式绑定也会移动
 
 `match` 和 `for` 中的非 `Copy` 绑定会接管匹配值的所有权：

@@ -481,7 +481,7 @@ use missing::*;  // E0052: glob import target not found
 
 ---
 
-## 移动、逃逸和借用检查 (E0100, E0200, E0300–E0307)
+## 移动、逃逸和借用检查 (E0100, E0200, E0300–E0308)
 
 <a id="e0100"></a>
 ### E0100 — 使用了已移动的值
@@ -551,6 +551,20 @@ let q = p;  // E0304
 <a id="e0307"></a>
 ### E0307 — 在 match guard 中移动模式绑定
 guard 失败时还要继续尝试后续 arm，因此 guard 只能查看或借用非 `Copy` 模式绑定，不能取得其所有权。把移动操作放到选中的 arm body 中。
+
+<a id="e0308"></a>
+### E0308 — 从显式安全引用解引用位置移出非 `Copy` 值
+`*reference` 在按值上下文中会读取安全引用指向的 `T`。如果 `T` 没有实现 `Copy`，引用并不拥有这个值，不能直接把它搬出：
+```riddle
+struct Token {}
+
+fun main() {
+    let mut token = Token {};
+    let reference = &mut token;
+    let moved = *reference;  // E0308
+}
+```
+保留引用并通过它访问，或只在确实允许按位复制时为类型实现 `Copy`。`*reference = value` 是写回原位置，不属于此错误。
 
 ---
 
