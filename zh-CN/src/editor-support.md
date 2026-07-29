@@ -1,6 +1,6 @@
 # 编辑器与 LSP
 
-Riddle 通过 `riddle-lsp` 为编辑器提供实时诊断、补全和语义高亮。当前仓库提供 Helix、VS Code、Zed 和 IntelliJ IDEA 2026.1+ 的适配文件。
+Riddle 通过 `riddle-lsp` 为编辑器提供实时诊断、补全、语义高亮、悬停信息和代码跳转。当前仓库提供 Helix、VS Code、Zed 和 IntelliJ IDEA 2026.1+ 的适配文件。
 
 ## 准备 riddle-lsp
 
@@ -190,10 +190,12 @@ Zed 适配当前以 Dev Extension 方式安装。先把 `riddle-zed.zip` 解压�
 | 字段、实例方法、模块项、枚举变体和关联函数补全 | 支持 |
 | 可变闭包绑定 Code Action | 支持 |
 | 跨文件补全（包含已打开文件的未保存内容） | 支持 |
+| 函数签名和推断类型 Hover | 支持 |
+| 跳转定义（包含未打开的 Clue 模块） | 支持 |
+| trait 与 trait 方法的跳转实现 | 支持 |
 | 增量文档同步与 Semantic Token delta | 支持 |
 | 编辑器外部 `.rid` 与 `Clue.toml` 文件变更 | 支持动态监听 |
-| Hover、跳转定义、查找引用 | 尚未实现 |
-| 重命名、格式化 | 尚未实现 |
+| 查找引用、重命名、格式化 | 尚未实现 |
 
 ## 常见问题
 

@@ -120,13 +120,13 @@ fun main() {
 
 ## riddle-lsp
 
-`riddle-lsp` 是 Riddle 的 Language Server Protocol 实现，基于 `tower-lsp`。它为编辑器提供实时诊断：
+`riddle-lsp` 是 Riddle 的 Language Server Protocol 实现，基于 `tower-lsp`。它为编辑器提供实时诊断、补全、语义高亮、悬停和代码跳转：
 
 ```bash
 cargo run -p riddle-lsp
 ```
 
-它通过 stdin/stdout 与编辑器通信，每次按键运行完整编译流程（解析 → HIR 降级 → 作用域图 → 类型检查 → 逃逸分析 → move check），然后刷新所有已打开文档的诊断：
+它通过 stdin/stdout 与编辑器通信。文档变化会经过短暂防抖，后台分析复用项目级增量语法树、函数体和类型检查缓存，只发布发生变化的诊断；补全、悬停和代码跳转只分析请求所属的 Clue 项目，并丢弃过期请求结果。
 
 - **解析错误**：来自词法/语法分析阶段；
 - **HIR 诊断**：包括 E0040（降级错误）、E0050/E0051/E0052（名字解析错误）；

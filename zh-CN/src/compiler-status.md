@@ -51,6 +51,8 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - 增量文本同步（`TextDocumentSyncKind::INCREMENTAL`）；
 - UTF-16 位置编码（正确处理多字节字符如 emoji）；
 - 补全（`textDocument/completion`）：在 Clue 项目中加载模块和本地依赖，优先使用所有已打开文件的未保存内容；候选遵循词法作用域，包含参数、局部变量和模式绑定，并支持字段、实例方法、模块项、枚举变体、关联函数及导入别名；
+- 悬停（`textDocument/hover`）：显示函数签名、字段与参数类型，以及局部表达式的推断类型；
+- 定义与实现跳转（`textDocument/definition`、`textDocument/implementation`）：支持局部绑定、模块项、字段、方法及跨文件符号，并把 trait 调用分别映射到 trait 声明和具体 impl；
 - 语义 Token（`textDocument/semanticTokens/full`），内置类型使用 `keyword`，区分自由函数、方法、struct、enum 和 trait，关联函数使用 `method` / `static`，标准库符号使用 `defaultLibrary`，并包含函数、参数和方法 `declaration` 及可变局部变量 `declaration` / `mutable` 标记；
 - 诊断区分主标签和次要标签（related information），错误码可跳转到错误码手册，注释和修复建议分别以 `note:` / `help:` 附加；
 - Clue 项目按原始文件 URI 发布诊断，包括未打开模块，并在重新分析后清理过期诊断；
@@ -279,7 +281,7 @@ C backend 会把标量 std 运算 trait 的显式方法调用直接输出为带�
 | 工具 | 状态 |
 |------|------|
 | `riddlec` | 编译器 CLI，支持前端检查、MIR 降级和 C backend |
-| `riddle-lsp` | LSP 服务器，基于 `tower-lsp`，提供项目范围补全，并发处理请求，按分析单元增量刷新诊断，并缓存当前文档的轻量语义 Token 结果 |
+| `riddle-lsp` | LSP 服务器，基于 `tower-lsp`，提供项目范围补全、悬停和定义/实现跳转，并发处理请求，按分析单元增量刷新诊断，并缓存当前文档的轻量语义 Token 结果 |
 | `clue` | 项目构建器，支持 `init`、`new`、`check`、`build` 和 `run`；二进制项目会保留 C 并生成本机可执行文件，库项目只输出 C |
 
 ## 当前限制
