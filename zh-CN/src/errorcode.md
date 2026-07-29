@@ -1,6 +1,6 @@
 # Riddle 错误码参考
 
-## 类型检查 (E0001–E0013, E0031–E0046, E0054–E0060, E0072)
+## 类型检查 (E0001–E0013, E0031–E0046, E0054–E0060, E0072, E0391)
 
 <a id="e0001"></a>
 ### E0001 — 类型不匹配
@@ -25,7 +25,7 @@ let x = true + 1;  // E0003: left operand must be numeric, got bool
 
 <a id="e0004"></a>
 ### E0004 — 不能调用非函数值
-对非函数类型进行了函数调用。
+对不可调用的值进行了函数调用。
 ```riddle
 let x = 42;
 x();  // E0004: cannot call value of type i32
@@ -73,7 +73,7 @@ let x = UnknownType { a: 1 };  // E0009: struct literal does not resolve to a st
 let (x, y) = 42;  // E0010: tuple pattern cannot match value of type i32
 ```
 
-引用模式还要求引用层数和可变性匹配。按 Rust 2024 规则，结构化模式自动解引用后已经进入引用绑定模式时，内部不能再写 `mut binding` 或显式引用模式；引用解构也不能用于没有初始化式的延迟声明。
+引用模式还要求引用层数和可变性匹配。结构化模式自动解引用后已经进入引用绑定模式时，内部不能再写 `mut binding` 或显式引用模式；引用解构也不能用于没有初始化式的延迟声明。
 
 <a id="e0011"></a>
 ### E0011 — 未知字面量后缀
@@ -204,7 +204,7 @@ trait Second: First {}
 
 <a id="e0045"></a>
 ### E0045 — 无法推断匿名函数参数类型
-参数类型无法从函数体、期望函数类型或调用点确定。
+参数类型无法从函数体、期望的可调用签名或调用点确定。
 ```riddle
 let id = fun(x) { x };  // E0045
 ```
@@ -309,6 +309,13 @@ struct Node {
 struct Node {
     next: &Node,  // OK：引用是定长的
 }
+```
+
+<a id="e0391"></a>
+### E0391 — 类型别名展开循环
+类型别名直接或间接引用自身，导致编译器无法得到最终类型。别名必须展开到非递归的具体类型。
+```riddle
+type Result = Result;  // E0391: cycle detected when expanding type alias `Result`
 ```
 
 ---

@@ -116,7 +116,7 @@ fun main() {
 
 原始指针解引用、原始指针索引以及调用 `unsafe fun` 都必须位于 `unsafe {}` 中。`unsafe fun` 的函数体本身仍从安全上下文开始，内部不安全操作需要显式块。`unsafe` 不会关闭类型、可变性、move 或借用检查；原始指针不参与普通引用的借用跟踪。
 
-函数类型同样携带安全属性：`fun(A) -> B` 可以转换为 `unsafe fun(A) -> B`，反向转换会被拒绝。调用不安全函数值仍需要 `unsafe {}`。
+不安全函数项只能在 `unsafe {}` 中直接调用，也不会满足安全的 `Fn`、`FnMut` 或 `FnOnce` bound，因此不能借助安全 callable 参数绕过调用检查。
 
 ## riddle-lsp
 

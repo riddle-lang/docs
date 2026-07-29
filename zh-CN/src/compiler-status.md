@@ -39,7 +39,7 @@ MIR（Mid-level IR）是 SSA 形式的中间表示，位于类型检查和代码
 - **值构造**：`StructValue`、`SparseStructValue`、`ArrayValue`、`TupleValue`；枚举使用稀疏初始化保证不同变体的 payload 槽位稳定；
 - **类型转换**：`IntToInt`、`IntToFloat`、`FloatToInt`、`FloatToFloat`、`BoolToInt`、`IntToBool`、`IntToPtr`、`PtrToPtr`；
 - **比较操作**：`Cmp` 支持 `Eq`、`Neq`、`Lt`、`Gt`、`LtEq`、`GtEq`。
-- **函数值**：可调用值统一为 `{ call, env }`，`FunctionRef` 取得隐藏函数或命名函数适配器地址，`CallIndirect` 传入环境后调用；未逃逸的捕获环境使用栈存储，只有越过当前栈帧的环境才提升到 GC 堆。
+- **函数值**：可调用值统一为 `{ call, env, drop }`，`FunctionRef` 取得隐藏函数或命名函数适配器地址，`CallIndirect` 传入环境后调用；未逃逸的捕获环境使用栈存储，只有越过当前栈帧的环境才提升到 GC 堆。
 
 MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`、`Slice`、`Str`、`Never`、`Void`，并为定长类型提供 `size_bytes()` 布局估算；裸 `Str` 和 `Slice` 没有独立大小。
 
@@ -78,8 +78,10 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 
 - `let` 绑定，默认不可变；
 - `let mut` 可变绑定；
-- `fun(x) { x + 1 }` 匿名函数、结构化函数类型、单态参数推断和闭包捕获；
-- 按用法推断共享、可变和值捕获，并据此检查 `Fn`、`FnMut`、`FnOnce` 调用能力；
+- `fun(x) { x + 1 }` 与 `move fun(x) { x + 1 }` 匿名函数、单态参数推断和闭包捕获；
+- 参数和返回位置的 `impl Fn`、`impl FnMut`、`impl FnOnce`，以及显式泛型 callable bound；
+- 按用法推断共享、可变和值捕获，精确追踪静态字段和元组元素，并据此检查 `Fn`、`FnMut`、`FnOnce` 调用能力；
+- 每个匿名函数表达式、命名函数项和泛型函数实例具有独立的静态类型；
 - 显式类型标注；
 - 顶层和 `impl` 内的 `const` 声明（`const NAME: Type = value;`），初始化式会做类型、纯表达式和循环检查；
 - 模块和 `impl` 内的有值 `type` 别名，以及 trait 中可省略默认值的关联类型；
@@ -93,7 +95,7 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - 结构体字面量和字段简写；
 - 类型转换表达式 `expr as Type`；`&str` 可安全转换为 `&[u8]`，`(*const T, usize)` / `(*mut T, usize)` 到 `&[T]`、`&[u8]` 到 `&str` 的 DST 等布局转换仅允许在 `unsafe` 中使用；
 - `unsafe { ... }` 块表达式，以及原始指针解引用和索引的安全上下文检查；
-- `unsafe fun`、`unsafe fun(...) -> T` 函数类型和单向安全函数转换；
+- `unsafe fun` 函数和直接调用检查；不安全函数项不会满足安全的 `Fn*` bound；
 - `unsafe extern "C"` 导入块，块内默认不安全并支持 `safe fun` 显式安全声明；
 - 解引用 `*expr`。
 
@@ -127,7 +129,7 @@ C backend 对整数回绕、除零、最小值除以 `-1`、移位计数和浮�
 - 元组模式；
 - 结构体模式；
 - 枚举 unit/tuple/struct 变体模式，payload 绑定会进入 guard 和 arm 表达式；
-- Rust 2024 风格的 match ergonomics：结构化模式自动解引用 `&T` / `&mut T`，内部绑定继承共享或可变引用模式；裸绑定保留整个引用，且不提供 `ref` / `ref mut` 语法。
+- 引用 match ergonomics：结构化模式自动解引用 `&T` / `&mut T`，内部绑定继承共享或可变引用模式；裸绑定保留整个引用，且不提供 `ref` / `ref mut` 语法。默认绑定模式变为引用后，内部不能再写 `mut binding` 或显式引用模式。
 
 ### 类型系统
 
@@ -146,7 +148,7 @@ C backend 对整数回绕、除零、最小值除以 `-1`、移位计数和浮�
 - 结构体；
 - 枚举；
 - 标准库 `Option<T>` 和 `Result<T, E>`；
-- 函数类型；
+- 独立的匿名函数与命名函数项类型，以及静态 `Fn` / `FnMut` / `FnOnce` bound；
 - 泛型函数、泛型结构体、泛型枚举、泛型 impl；
 - 泛型 bound：`<T: Trait>`、`<T: A + B>`、`where T: Trait`；
 - 类型参数实例化；
@@ -245,7 +247,8 @@ prelude 直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`
 - 数组元素和结构体字段按值移动；
 - `match` 解构按字段记录部分移动，未移动的兄弟字段仍可继续使用；
 - 引用逃逸分析通过过程间的“外泄参数 / 返回来源参数”摘要，决定局部值使用栈分配还是 GC 堆分配。
-- 共享/可变闭包捕获会让对应局部获得稳定地址；闭包未逃逸时使用栈存储，闭包越过当前栈帧时才提升到 GC 堆，且分配位置不会放宽移动和借用检查；
+- 共享/可变闭包捕获会让对应局部获得稳定地址；静态字段和元组元素按投影独立捕获，动态索引与解引用在无法继续静态细分的位置停止；闭包未逃逸时使用栈存储，闭包越过当前栈帧时才提升到 GC 堆，且分配位置不会放宽移动和借用检查；
+- `move fun` 按值捕获所有使用到的外部位置；`Copy` 值仍复制，按值捕获本身不会强制闭包成为 `FnOnce`；
 - 非 `Copy` 值捕获会在创建闭包时移动该值，`FnOnce` 闭包调用后不可再次使用。
 - 需要析构的局部、参数、模式绑定、迭代元素、聚合字段和闭包值使用 drop flag 防止移动后的重复析构；逃逸到 GC 堆只改变地址，仍在所有者结束时确定性运行 `Drop`。
 
@@ -285,7 +288,7 @@ C backend 会把标量 std 运算 trait 的显式方法调用直接输出为带�
 - 泛型目前偏向单态化，尚未覆盖完整 Rust 泛型能力；
 - `riddlec` 的 C backend 只输出 C；`clue build` 会严格使用 `CC`，或自动选择能完成 C11 编译和链接的系统 C 编译器来生成本机可执行文件；
 - 逃逸分析当前粒度是整个局部变量，不做字段级拆分；
-- 闭包当前按整个绑定捕获，不做字段级精确捕获；
 - TODO：数组 `IntoIterator` 当前按索引顺序产出元素；若未来允许自定义数组迭代器乱序移出元素，需要先加入 `MaybeUninit` / `ManuallyDrop` 等价存储和逐槽存活状态，确保剩余元素只析构一次；
-- 函数类型语法目前只能写表示 `Fn` 的 `fun(...) -> T`，尚不能显式声明接收或返回 `FnMut`、`FnOnce`；
+- 可调用分派仅支持静态单态化；尚不支持 `dyn Fn*`、异构可调用值容器、递归匿名函数、匿名函数泛型参数或匿名函数参数模式；
+- `Fn`、`FnMut`、`FnOnce` 是编译器密封能力，用户代码不能手动实现；
 - 这是开发中工具链，不保证语法和 ABI 稳定。

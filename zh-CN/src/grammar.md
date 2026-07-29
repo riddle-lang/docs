@@ -65,8 +65,9 @@ item_generic_param = ident | "const" ident ":" ty;
 
 generic_params = "<" generic_param ("," generic_param)* ">";
 generic_param = ident (":" generic_bound ("+" generic_bound)*)? | "const" ident ":" ty;
-generic_bound = path ("<" generic_bound_arg ("," generic_bound_arg)* ","? ">")?;
+generic_bound = callable_bound | path ("<" generic_bound_arg ("," generic_bound_arg)* ","? ">")?;
 generic_bound_arg = ident "=" ty | ty;
+callable_bound = ("Fn" | "FnMut" | "FnOnce") "(" type_list? ")" "->" ty;
 where_clause = "where" where_predicate ("," where_predicate)* ","?;
 where_predicate = ty ":" generic_bound ("+" generic_bound)*;
 
@@ -77,7 +78,7 @@ type_list = ty ("," ty)* ","?;
 
 var_decl = "let" pattern (":" ty)? ("=" expression)? ";";
 
-param = attribute* ((("&" "mut"?)? "self") | (ident ":" ty));
+param = attribute* ((("&" "mut"?)? "self") | ("mut"? ident ":" ty));
 
 func_def = "fun" ident generic_params? "(" (param ("," param)*)? ")" ("->" ty)? where_clause? block;
 func_decl = "pub"? "unsafe"? "fun" ident generic_params? "(" (param ("," param)*)? ")" ("->" ty)? where_clause? (block | ";");
@@ -111,8 +112,8 @@ unsafe_expr = "unsafe" block;
 
 expr_without_block = unary (("as" ty) | (binop unary))*;
 
-lambda_expr = "fun" "(" (lambda_param ("," lambda_param)*)? ")" ("->" ty)? block;
-lambda_param = ident (":" ty)?;
+lambda_expr = "move"? "fun" "(" (lambda_param ("," lambda_param)*)? ")" ("->" ty)? block;
+lambda_param = "mut"? ident (":" ty)?;
 
 unary = prefix_op unary | postfix;
 
@@ -180,9 +181,11 @@ ty = attribute* (
    | "*" ("const" | "mut") ty
    | "[" ty (";" expression)? "]"
    | int_lit
-   | "unsafe"? "fun" "(" type_list? ")" ("->" ty)?
+   | impl_callable_type
    | "(" (ty ("," ty)* ","?)? ")"
    );
+
+impl_callable_type = "impl" callable_bound;
 
 // == operators ==
 
@@ -207,6 +210,6 @@ bool_lit = "true" | "false";
 ident = [a-zA-Z_][a-zA-Z0-9_]*;
 ```
 
-`&pattern` 和 `&mut pattern` 分别解构一层同可变性的共享引用和可变引用；它们可以嵌套，例如 `&&mut value`。Riddle 不提供 `ref name` 或 `ref mut name` 绑定语法。结构化模式匹配引用时会按 Rust 2024 规则自动解引用并把内部绑定变为引用，详见[控制流](./control-flow.md#引用模式与匹配人体工学)。
+`&pattern` 和 `&mut pattern` 分别解构一层同可变性的共享引用和可变引用；它们可以嵌套，例如 `&&mut value`。Riddle 不提供 `ref name` 或 `ref mut name` 绑定语法。结构化模式匹配引用时会自动解引用并让内部绑定继承引用模式；默认绑定模式变为引用后，内部不能再写 `mut binding` 或显式 `&pattern` / `&mut pattern`。需要显式引用模式时，应让它出现在默认 `move` 模式的位置。详见[控制流](./control-flow.md#引用模式与匹配人体工学)。
 
 `let` 可以在声明处初始化，也可以省略初始化式并稍后赋值：`let pattern = expression;`、`let pattern: Type;` 和可由首次赋值推断类型的 `let pattern;` 都是合法语法。延迟初始化的绑定必须在每条到达使用点的路径上先完成赋值；否则会报告 `E0059`。引用解构依赖初始化式的值类别，因此不能用于延迟初始化声明。`type Name;` 只用于 trait 中声明关联类型；模块和 `impl` 中的类型别名需要写出 `= Type`。
