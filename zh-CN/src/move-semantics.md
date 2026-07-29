@@ -96,6 +96,21 @@ fun main() {
 
 解引用不会改变按值使用的规则。`let value = *reference` 会读取 `reference` 指向的 `T`：`T: Copy` 时得到副本；否则因为引用不拥有 `T`，从解引用位置搬出值会报 `E0308`。如果要修改原值，应保留 `&mut T`，例如 `let mut point = f(&mut p); point.x = 1;`；`let value = *point` 则不是引用别名。
 
+## 引用模式与自动借用
+
+显式 `&pattern` / `&mut pattern` 与显式解引用相同：它们读取引用指向的值，内部按值绑定只允许取得 `Copy` 内容。模式不会移动引用本身，临时借用会在没有绑定继续持有它时结束：
+
+```riddle
+fun example() -> i32 {
+    let mut original = 3;
+    let (&mut copied, plain) = (&mut original, 4);
+    original = 5; // OK：copied 是副本，临时借用已经结束
+    copied + plain + original
+}
+```
+
+结构化模式自动解引用 `&T` / `&mut T` 时则会创建字段重借用。绑定会保持对原位置的共享或可变借用，直到所有相关绑定的最后一次使用；可变重借用存活期间，父 `&mut` 会被冻结。不同字段的重借用仍按位置分别追踪。
+
 ## 模式绑定也会移动
 
 `match` 和 `for` 中的非 `Copy` 绑定会接管匹配值的所有权：

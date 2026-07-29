@@ -102,7 +102,7 @@ if_expr = "if" expression block ("else" (if_expr | block))?;
 
 while_expr = "while" expression block;
 
-for_expr = "for" ident "in" expression block;
+for_expr = "for" pattern "in" expression block;
 
 match_expr = "match" expression "{" match_arm ("," match_arm)* ","? "}";
 match_arm = attribute* pattern ("if" expression)? "=>" expression;
@@ -136,8 +136,9 @@ struct_expr_fields = "{" (struct_expr_field ("," struct_expr_field)* ","?)? "}";
 
 struct_expr_field = ident (":" expression)?;
 
-pattern = attribute* ("_" | "mut"? ident | literal | path | tuple_pattern | struct_pattern | enum_pattern);
+pattern = attribute* ("_" | "mut"? ident | literal | path | reference_pattern | tuple_pattern | struct_pattern | enum_pattern);
 
+reference_pattern = "&" "mut"? pattern;
 tuple_pattern = "(" (pattern ("," pattern)* ","?)? ")";
 struct_pattern = path "{" (field_pattern ("," field_pattern)* ","?)? "}";
 field_pattern = attribute* ident (":" pattern)?;
@@ -206,4 +207,6 @@ bool_lit = "true" | "false";
 ident = [a-zA-Z_][a-zA-Z0-9_]*;
 ```
 
-`let` 可以在声明处初始化，也可以省略初始化式并稍后赋值：`let pattern = expression;`、`let pattern: Type;` 和可由首次赋值推断类型的 `let pattern;` 都是合法语法。延迟初始化的绑定必须在每条到达使用点的路径上先完成赋值；否则会报告 `E0059`。`type Name;` 只用于 trait 中声明关联类型；模块和 `impl` 中的类型别名需要写出 `= Type`。
+`&pattern` 和 `&mut pattern` 分别解构一层同可变性的共享引用和可变引用；它们可以嵌套，例如 `&&mut value`。Riddle 不提供 `ref name` 或 `ref mut name` 绑定语法。结构化模式匹配引用时会按 Rust 2024 规则自动解引用并把内部绑定变为引用，详见[控制流](./control-flow.md#引用模式与匹配人体工学)。
+
+`let` 可以在声明处初始化，也可以省略初始化式并稍后赋值：`let pattern = expression;`、`let pattern: Type;` 和可由首次赋值推断类型的 `let pattern;` 都是合法语法。延迟初始化的绑定必须在每条到达使用点的路径上先完成赋值；否则会报告 `E0059`。引用解构依赖初始化式的值类别，因此不能用于延迟初始化声明。`type Name;` 只用于 trait 中声明关联类型；模块和 `impl` 中的类型别名需要写出 `= Type`。

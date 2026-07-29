@@ -73,6 +73,8 @@ let x = UnknownType { a: 1 };  // E0009: struct literal does not resolve to a st
 let (x, y) = 42;  // E0010: tuple pattern cannot match value of type i32
 ```
 
+引用模式还要求引用层数和可变性匹配。按 Rust 2024 规则，结构化模式自动解引用后已经进入引用绑定模式时，内部不能再写 `mut binding` 或显式引用模式；引用解构也不能用于没有初始化式的延迟声明。
+
 <a id="e0011"></a>
 ### E0011 — 未知字面量后缀
 整数或浮点数字面量的类型后缀无效。
@@ -554,14 +556,14 @@ guard 失败时还要继续尝试后续 arm，因此 guard 只能查看或借用
 
 <a id="e0308"></a>
 ### E0308 — 从显式安全引用解引用位置移出非 `Copy` 值
-`*reference` 在按值上下文中会读取安全引用指向的 `T`。如果 `T` 没有实现 `Copy`，引用并不拥有这个值，不能直接把它搬出：
+`*reference` 或显式 `&pattern` / `&mut pattern` 中的按值绑定会读取安全引用指向的 `T`。如果 `T` 没有实现 `Copy`，引用并不拥有这个值，不能直接把它搬出：
 ```riddle
 struct Token {}
 
 fun main() {
     let mut token = Token {};
     let reference = &mut token;
-    let moved = *reference;  // E0308
+    let &mut moved = reference;  // E0308
 }
 ```
 保留引用并通过它访问，或只在确实允许按位复制时为类型实现 `Copy`。`*reference = value` 是写回原位置，不属于此错误。

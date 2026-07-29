@@ -159,7 +159,41 @@ fun classify(n: i32) -> i32 {
 }
 ```
 
-当前模式支持 `_`、标识符绑定、字面量、路径、元组、结构体和枚举变体。
+当前模式支持 `_`、标识符绑定、字面量、路径、引用、元组、结构体和枚举变体。
+
+## 引用模式与匹配人体工学
+
+显式引用模式会解构恰好一层、且可变性必须相同的引用：
+
+```riddle
+fun read(reference: &mut i32) -> i32 {
+    let &mut copied = reference;
+    copied
+}
+
+fun mixed(mut value: i32) -> i32 {
+    let (&mut copied, plain) = (&mut value, 4);
+    copied + plain
+}
+```
+
+显式模式内的绑定按值取得内容。上例的 `copied` 是 `i32` 副本，不是 `&mut i32`；若内容不是 `Copy`，会报告 `E0308`。`&pattern` 不能匹配 `&mut T`，`&mut pattern` 也不能匹配 `&T`。
+
+元组、结构体、枚举和字面量等非引用模式遇到引用输入时会自动逐层解引用，并继承默认绑定模式：
+
+```riddle
+struct Pair { left: i32, right: i32 }
+
+fun update(pair: &mut Pair) {
+    let Pair { left, right } = pair;
+    *left = 10;   // left: &mut i32
+    *right = 20;  // right: &mut i32
+}
+```
+
+经过共享引用时，内部绑定最终都是共享引用；只经过可变引用时则得到可变引用。裸标识符模式不会自动解引用，因此 `let whole = pair;` 仍让 `whole` 取得整个引用值。Riddle 没有 `ref` / `ref mut` 语法。
+
+结构化模式自动解引用后，如果默认绑定模式已经变为引用，内部不能再写 `mut binding` 或显式 `&pattern` / `&mut pattern`。需要显式引用模式时，应让它出现在默认 `move` 模式的位置。
 
 未限定的标识符模式会绑定并匹配任意值。因此下面的 `other` 不是常量，而是覆盖除前面 arm 之外所有剩余 `u8` 值的绑定：
 
