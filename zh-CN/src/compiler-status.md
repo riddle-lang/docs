@@ -48,14 +48,15 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 仓库包含 `app/riddle-lsp`，一个基于 `tower-lsp` 的 Language Server Protocol 实现：
 
 - 完整的诊断流水线：解析错误、HIR 诊断、类型检查错误、move/escape 分析诊断全部通过 LSP 推送；
-- 全文本同步（`TextDocumentSyncKind::FULL`）；
+- 增量文本同步（`TextDocumentSyncKind::INCREMENTAL`）；
 - UTF-16 位置编码（正确处理多字节字符如 emoji）；
 - 补全（`textDocument/completion`）：在 Clue 项目中加载模块和本地依赖，优先使用所有已打开文件的未保存内容；候选遵循词法作用域，包含参数、局部变量和模式绑定，并支持字段、实例方法、模块项、枚举变体、关联函数及导入别名；
 - 语义 Token（`textDocument/semanticTokens/full`），内置类型使用 `keyword`，区分自由函数、方法、struct、enum 和 trait，关联函数使用 `method` / `static`，标准库符号使用 `defaultLibrary`，并包含函数、参数和方法 `declaration` 及可变局部变量 `declaration` / `mutable` 标记；
 - 诊断区分主标签和次要标签（related information），错误码可跳转到错误码手册，注释和修复建议分别以 `note:` / `help:` 附加；
 - Clue 项目按原始文件 URI 发布诊断，包括未打开模块，并在重新分析后清理过期诊断；
 - 诊断严重性层级：Error、Warning、Information、Hint；
-- 文档变更会先合并短时间内的连续输入，再在后台运行诊断并丢弃过期结果；未变化的文件和无关 Clue 项目直接复用诊断，变化的分析单元复用增量语法树、函数体和全局类型检查缓存，在声明、overlay、磁盘源码或 manifest 变化时保守失效；诊断在 move/borrow 检查后停止，不生成 MIR；UTF-16 位置通过行索引换算，语义 Token 只解析当前文件并降级 HIR，并按文档文本缓存；
+- 文档变更会先合并短时间内的连续输入，再在后台运行诊断并丢弃过期结果；未变化的文件和无关 Clue 项目直接复用诊断，变化的分析单元复用增量语法树、函数体和全局类型检查缓存，在声明、overlay、磁盘源码或 manifest 变化时保守失效；诊断在 move/borrow 检查后停止，不生成 MIR；UTF-16 位置通过行索引换算，语义 Token 使用包含未保存 overlay 的项目级 HIR，并按文档文本和分析修订缓存；
+- 支持动态注册 `.rid` 与 `Clue.toml` 文件监听，编辑器外部的源码、模块和 manifest 变更会触发项目缓存失效与重新诊断；
 - 仓库内提供 Helix、VS Code、Zed 和 IntelliJ IDEA 2026.1+ 的 `.rid` 文件与 `riddle-lsp` 适配；
 
 安装和验证步骤见[编辑器与 LSP](./editor-support.md)。

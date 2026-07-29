@@ -191,6 +191,7 @@ Zed 适配当前以 Dev Extension 方式安装。先把 `riddle-zed.zip` 解压�
 | 可变闭包绑定 Code Action | 支持 |
 | 跨文件补全（包含已打开文件的未保存内容） | 支持 |
 | 增量文档同步与 Semantic Token delta | 支持 |
+| 编辑器外部 `.rid` 与 `Clue.toml` 文件变更 | 支持动态监听 |
 | Hover、跳转定义、查找引用 | 尚未实现 |
 | 重命名、格式化 | 尚未实现 |
 
