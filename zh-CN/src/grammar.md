@@ -117,7 +117,7 @@ lambda_param = "mut"? ident (":" ty)?;
 
 unary = prefix_op unary | postfix;
 
-postfix = primary ( "<" type_arg_list ">" "(" arg_list ")" | "(" arg_list ")" | "." ident | "[" expression "]" | struct_expr_fields | "::" "<" type_arg_list ">" struct_expr_fields | "." ident "(" arg_list ")" )*;
+postfix = primary ( "::" "<" type_arg_list ">" "(" arg_list ")" | "(" arg_list ")" | "." ident | "[" expression "]" | struct_expr_fields | "::" "<" type_arg_list ">" struct_expr_fields | "." ident "(" arg_list ")" )*;
 
 arg_list = (expression ("," expression)*)?;
 
@@ -170,8 +170,8 @@ enum_pattern = path | path "(" (pattern ("," pattern)* ","?)? ")" | path "{" (fi
 
 // == path / type ==
 
-path = ("::")? (ident | "self" | "super" | "crate")
-       ("::" (ident | "self" | "super" | "crate"))*;
+path_segment = (ident | "self" | "super" | "crate") ("::" type_args)?;
+path = ("::")? path_segment ("::" path_segment)*;
 
 ty = attribute* (
      "!"

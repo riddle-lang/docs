@@ -37,7 +37,7 @@ MIR（Mid-level IR）是 SSA 形式的中间表示，位于类型检查和代码
 - **分配指令**：`Alloca`（栈分配）和 `HeapAlloc`（GC 堆分配），由逃逸分析结果驱动；
 - **内存操作**：`Load`、`Store`、`FieldPtr`（字段指针）、`IndexPtr` / `CheckedIndexPtr`（原始指针索引 / 安全数组与切片索引）、`ExtractValue`（提取聚合字段）；
 - **值构造**：`StructValue`、`SparseStructValue`、`ArrayValue`、`TupleValue`；枚举使用稀疏初始化保证不同变体的 payload 槽位稳定；
-- **类型转换**：`IntToInt`、`IntToFloat`、`FloatToInt`、`FloatToFloat`、`BoolToInt`、`IntToBool`、`IntToPtr`、`PtrToPtr`；
+- **类型转换**：`IntToInt`、`IntToChar`、`IntToFloat`、`FloatToInt`、`FloatToFloat`、`BoolToInt`、`IntToBool`、`IntToPtr`、`PtrToPtr`；
 - **比较操作**：`Cmp` 支持 `Eq`、`Neq`、`Lt`、`Gt`、`LtEq`、`GtEq`。
 - **函数值**：可调用值统一为 `{ call, env, drop }`，`FunctionRef` 取得隐藏函数或命名函数适配器地址，`CallIndirect` 传入环境后调用；未逃逸的捕获环境使用栈存储，只有越过当前栈帧的环境才提升到 GC 堆。
 
@@ -90,13 +90,13 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - 模块和 `impl` 内的有值 `type` 别名，以及 trait 中可省略默认值的关联类型；
 - `let` 支持延迟初始化，首次赋值不要求 `mut`，并检查跨 `if`、`match`、循环的 definite-initialization；未初始化读取报 `E0059`，不可变绑定二次赋值报 `E0031`；
 - 函数定义和函数声明；
-- 泛型函数（类型参数和 const 参数从实参推断，支持 `<T: Trait>` bound、`where` 子句，C backend 单态化）；
+- 泛型函数（类型参数和 const 参数从实参推断，支持 Rust 风格函数、方法及 `Type::<T>::function::<U>()` 显式参数、`<T: Trait>` bound、`where` 子句，C backend 单态化）；
 - 函数参数、返回类型、尾表达式和 `return`；
 - 块表达式；
 - 字段访问、函数调用、方法调用；
 - 数组字面量、数组重复表达式 `[value; N]`、数组与切片安全索引（越界终止并报告运行时错误）；原始指针索引仍需 `unsafe` 且不做边界检查；
 - 结构体字面量和字段简写；
-- 类型转换表达式 `expr as Type`；`&str` 可安全转换为 `&[u8]`，`(*const T, usize)` / `(*mut T, usize)` 到 `&[T]`、`&[u8]` 到 `&str` 的 DST 等布局转换仅允许在 `unsafe` 中使用；
+- 类型转换表达式 `expr as Type`；支持安全的 `u8 as char` 与 `&str` 到 `&[u8]`，`(*const T, usize)` / `(*mut T, usize)` 到 `&[T]`、`&[u8]` 到 `&str` 的 DST 等布局转换仅允许在 `unsafe` 中使用；
 - `unsafe { ... }` 块表达式，以及原始指针解引用和索引的安全上下文检查；
 - `unsafe fun` 函数和直接调用检查；不安全函数项不会满足安全的 `Fn*` bound；
 - `unsafe extern "C"` 导入块，块内默认不安全并支持 `safe fun` 显式安全声明；
@@ -120,7 +120,7 @@ C backend 对整数回绕、除零、最小值除以 `-1`、移位计数和浮�
 - `while` 循环；
 - `for item in iterable` 循环，按 `IntoIterator` / `Iterator` 做类型检查，并在 MIR 中降成 `into_iter` / `next` 调用；当前元素、迭代器和提前退出路径具有独立的析构作用域；
 - 泛型参数可以通过 `IntoIterator<Item = ..., IntoIter = ...>` bound 使用 `for`，具体 impl 在单态化时解析；
-- 标准库 `Range`、固定长度数组 `[T; N]`、共享切片 `&[T]` 和可变切片 `&mut [T]` 可直接用于 `for`，数组按值遍历且不要求元素类型为 `Copy`；
+- 标准库 `Range`、固定长度数组 `[T; N]`、共享切片 `&[T]`、可变切片 `&mut [T]` 和 `&str` 可直接用于 `for`，数组按值遍历且不要求元素类型为 `Copy`，字符串迭代产出 Unicode `char`；
 - `match` 表达式，以及枚举、布尔值、`()`、整数、元组和结构体的递归穷尽性检查；
 - 非穷尽整数匹配会报告未覆盖的连续值区间；
 - `match` guard，guard 失败后继续检查后续 arm，且带 guard 的 arm 不计入静态穷尽性；
@@ -202,13 +202,13 @@ match value {
 
 当前标准库会自动拼到用户源码后面，根部通过 prelude 重导出常用项，同时按 Rust 风格分模块定义：
 
-prelude 直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`、`Ok`、`Err`、`Copy`、`Clone`、`print`、比较 trait 和迭代协议。
+prelude 直接提供 `Option`、`Result`、`String`、`Vector`、`TreeMap`、`TreeSet`、`HashMap`、`HashSet`、`Some`、`None`、`Ok`、`Err`、`Copy`、`Clone`、`Default`、`Into`、`Hash`、`print`、比较 trait 和迭代协议。
 
 - `std::option::Option<T>`，提供 `is_some`、`is_none`、`unwrap_or` 和 `or`；
 - `std::result::Result<T, E>`，提供 `is_ok`、`is_err`、`unwrap_or`、`ok` 和 `err`；
-- `std::io::{print, println, Display}` 当前支持 `&str` 和 `i32`；
-- `std::string::String` 提供 `new`、`from_str`、`as_str`、`len`、`capacity`、`is_empty`、`push_str` 和 `clear`；同一模块按 Rust 风格为 `str` 提供 `len`、`is_empty` 和 `as_bytes`；
-- `std::vector::Vector<T>` 提供 `new`、`len`、`capacity`、`is_empty`、`push`、`pop`、`get`、`get_mut`、`clear`、`as_slice` 和按值迭代；缓冲区通过运行时 `rgc_realloc`、`rgc_free` 管理，失败条件统一调用 `panic`；
+- `std::io::{print, println}` 通过 `std::fmt::{Display, Formatter, Result}` 支持字符串、布尔、字符、整数和浮点标量；实现 `Display` 需要提供 `fmt(&self, formatter: &mut Formatter) -> Result`，浮点格式化使用固定六位小数；
+- `std::string::String` 提供 `new`、`from_str`、`as_str`、`len`、`capacity`、`is_empty`、`push_str` 和 `clear`；同一模块按 Rust 风格为 `str` 提供 `len`、`is_empty`、`as_bytes` 和按 Unicode `char` 遍历的 `StrIter`；
+- `std::vector::Vector<T>` 提供 `new`、`len`、`capacity`、`is_empty`、`push`、`pop`、`get`、`get_mut`、`swap`、`clear`、`as_slice`、读写下标和按值迭代；下标越界调用 `panic`，缓冲区通过运行时 `rgc_realloc`、`rgc_free` 管理；
 - `Vector<T>` 会拒绝零大小元素并检查容量乘法溢出；原始指针目前不能比较空值，因此尚不能在标准库内处理 C 分配失败；
 - `std::iter::{Iterator, IntoIterator}`；
 - `std::slice::{SliceIter, SliceIterMut}`，并为 `[T]` 提供长度、边界检查访问、原始指针访问和借用迭代；
@@ -217,9 +217,14 @@ prelude 直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`
 - `std::marker::Copy`；
 - `std::clone::Clone`；
 - `std::cmp::{Ordering, PartialEq, Eq, PartialOrd, Ord}`；
-- `std::ops` 下的算术、位运算、移位和复合赋值 trait，均有可调用的必需方法；这些 trait 由对应 `#[lang = "..."]` 标记，其标量 impl 作为编译器内置运算。
+- `std::ops` 下的算术、位运算、移位、复合赋值以及 `Index` / `IndexMut` trait，均有可调用的必需方法；这些 trait 由对应 `#[lang = "..."]` 标记，用户类型的下标操作静态分派到 `index` / `index_mut`。
+- `std::default::Default` 为标量、`Option<T>`、`String` 和 `Vector<T>` 提供默认值；`Default::default()` 支持按期望类型静态选择 impl；
+- `std::convert::Into<T>` 是 `?` 错误传播使用的错误转换协议；
+- `std::hash::Hash` 通过共享借用为标量提供确定性的 `usize` 哈希值；
+- `std::tree_map::TreeMap` 和 `std::tree_set::TreeSet` 使用红黑树，键要求实现 `Ord`；`std::hash_map::HashMap` 和 `std::hash_set::HashSet` 使用开放寻址哈希表、线性探测和负载扩容，键要求实现 `Hash + Eq`；
+- `std::parse::parse_i32` 提供十进制 `i32` 解析；`std::time::time_now` 转发到 C `time`。
 
-`Default` 需要按具体 `Self` 调用关联 trait 函数，格式化和哈希还需要对应运行时协议；这些能力尚未实现，因此 std 不再暴露只有名字、没有行为的占位 trait。
+`Default`、`Hash`、标量格式化和基础集合/解析/时间 API 已经具备可执行行为；`parse_i32` 当前不做溢出诊断。
 
 当前影响编译器语义的 lang trait 包括：
 
@@ -228,6 +233,7 @@ prelude 直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`
 - `#[lang = "add"]` 到 `#[lang = "shr"]`：用户类型的算术、位运算和移位会分派到对应 trait 方法；标量 impl 的方法调用直接降为 MIR 运算；
 - `#[lang = "neg"]` 和 `#[lang = "not"]`：用户类型的一元负号和逻辑非会分派到对应 trait 方法；标量 impl 的方法调用直接降为 MIR 运算；
 - `#[lang = "add_assign"]` 到 `#[lang = "shr_assign"]`：用户类型的复合赋值会分派到对应 trait 方法；标量 impl 的方法调用直接降为 MIR 的读取、运算和写回；
+- `#[lang = "index"]` 和 `#[lang = "index_mut"]`：非内建下标读取和可变位置分别静态分派到 `Index::index` 与 `IndexMut::index_mut`；数组、切片和裸指针保留原有直接索引路径；
 - `#[lang = "partial_eq"]`：用户类型的 `==` / `!=` 分派到 `PartialEq::eq` / `ne`；
 - `#[lang = "partial_ord"]`：用户类型的 `<`、`>`、`<=`、`>=` 分派到 `PartialOrd::lt`、`gt`、`le`、`ge`。
 
@@ -238,6 +244,7 @@ prelude 直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`
 ### 所有权、移动和逃逸
 
 - 值默认移动；
+- `?` 只接受 `Result<T, E>`；成功分支继续当前函数，错误分支通过 `Into` 转换后返回外层 `Result`；
 - 标量、共享引用、原始指针和命名函数项等内置 Copy 候选默认可复制；`&mut T` 与闭包值不可复制；
 - `Option<T>` 和 `Result<T, E>` 仅在所有 payload 类型实现 `Copy` 时实现 `Copy`；
 - 用户类型可以通过实现 `std::marker::Copy` 进入复制语义；编译器会验证结构体字段和所有枚举 payload，并在泛型场景中使用 impl bound；
@@ -286,8 +293,7 @@ C backend 会把标量 std 运算 trait 的显式方法调用直接输出为带�
 
 ## 当前限制
 
-- `Default`、格式化和哈希协议尚未提供；
-- 浮点余数尚未支持，`Rem` / `RemAssign` 目前只为整数实现；
+- `parse_i32` 当前接受十进制输入但不报告整数溢出；
 - 泛型目前偏向单态化，尚未覆盖完整 Rust 泛型能力；
 - `riddlec` 的 C backend 只输出 C；`clue build` 会严格使用 `CC`，或自动选择能完成 C11 编译和链接的系统 C 编译器来生成本机可执行文件；
 - 逃逸分析当前粒度是整个局部变量，不做字段级拆分；

@@ -181,7 +181,7 @@ impl std::marker::Copy for Point { }
 fun main() {
     let p = Point { x: 1, y: 2 };
     let q = p;    // 复制而非移动
-    print(p.x);   // OK：p 仍然可用
+    print(&p.x);   // OK：p 仍然可用
 }
 ```
 

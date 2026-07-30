@@ -78,9 +78,13 @@ let empty = text.is_empty();                // false
 let bytes = text.as_bytes();                // &[u8]
 let first = bytes.get(0usize);              // Some(&104u8)
 let missing = bytes.get(5usize);            // None
+
+for ch in "A中🙂" {
+    // ch: char
+}
 ```
 
-`len` 返回 UTF-8 字节数，不是字符数。`as_bytes` 不复制数据，返回共享字节切片；字节访问复用切片的 `get`，索引越界时返回 `None`。
+`len` 返回 UTF-8 字节数，不是字符数。`as_bytes` 不复制数据，返回共享字节切片；字节访问复用切片的 `get`，索引越界时返回 `None`。`&str` 可直接用于 `for`，迭代器按 UTF-8 解码并依次产出 Unicode `char`。
 
 ## 可增长的 `String`
 

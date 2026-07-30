@@ -10,7 +10,7 @@
 ```riddle
 fun main() {
     let answer = 42;
-    print(answer)
+    print(&answer)
 }
 ```
 
@@ -38,7 +38,7 @@ fun main() {
 fun main() {
     let mut count = 0;
     count = count + 1;
-    print(count)
+    print(&count)
 }
 ```
 
@@ -55,7 +55,7 @@ fun main() {
     let (a, b) = (1, 2);
     let Point { x, y } = Point { x: 3, y: 4 };
     let (_, second) = (10, 20); // 用 `_` 丢弃不需要的部分
-    print(a + b + x + y + second)
+    print(&(a + b + x + y + second))
 }
 ```
 
@@ -65,7 +65,7 @@ fun main() {
 fun main() {
     let (mut count, step) = (0, 5);
     count = count + step;
-    print(count)
+    print(&count)
 }
 ```
 

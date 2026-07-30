@@ -45,7 +45,7 @@ fun choose(flag: bool) -> i32 {
 ```riddle
 fun print_if_positive(x: i32) {
     if x > 0 {
-        print(x);
+        print(&x);
     }
 }
 ```
@@ -61,7 +61,7 @@ fun count_to_three() {
     let mut i = 0;
 
     while i < 3 {
-        print(i);
+        print(&i);
         i = i + 1;
     }
 }

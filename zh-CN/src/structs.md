@@ -34,7 +34,7 @@ pub struct Point {
 ```riddle
 fun main() {
     let foo = Foo { x: 1, y: 1 };
-    print(foo.x)
+    print(&foo.x)
 }
 ```
 
@@ -104,13 +104,13 @@ fun main() {
 
 ```riddle
 fun take(foo: Foo) {
-    print(foo.x)
+    print(&foo.x)
 }
 
 fun main() {
     let foo = Foo { x: 1, y: 1 };
     take(foo);
-    print(foo); // error: foo 已经被移动
+    print(&foo); // error: foo 已经被移动
 }
 ```
 
@@ -118,13 +118,13 @@ fun main() {
 
 ```riddle
 fun inspect(foo: &Foo) {
-    print(foo.x)
+    print(&foo.x)
 }
 
 fun main() {
     let foo = Foo { x: 1, y: 1 };
     inspect(&foo);
-    print(foo)
+    print(&foo)
 }
 ```
 

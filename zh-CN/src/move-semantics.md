@@ -16,8 +16,8 @@ struct Foo {
 fun main() {
     let a = Foo { x: 1, y: 1 };
     let b = a;
-    print(a); // error: a 已经被移动
-    print(b);
+    print(&a); // error: a 已经被移动
+    print(&b);
 }
 ```
 
@@ -29,13 +29,13 @@ fun main() {
 
 ```riddle
 fun consume(foo: Foo) {
-    print(foo.x)
+    print(&foo.x)
 }
 
 fun main() {
     let foo = Foo { x: 1, y: 1 };
     consume(foo);
-    print(foo); // error: foo 已经被移动
+    print(&foo); // error: foo 已经被移动
 }
 ```
 
@@ -59,13 +59,13 @@ Riddle 选择让值默认移动，是为了让资源流向更明显：
 
 ```riddle
 fun inspect(foo: &Foo) {
-    print(foo.x)
+    print(&foo.x)
 }
 
 fun main() {
     let foo = Foo { x: 1, y: 1 };
     inspect(&foo);
-    print(foo); // 可以继续使用
+    print(&foo); // 可以继续使用
 }
 ```
 

@@ -10,7 +10,7 @@
 
 ```riddle
 fun greet() {
-    print("hello")
+    print(&"hello")
 }
 ```
 
@@ -22,7 +22,7 @@ fun greet() {
 
 ```riddle
 fun greet(name: &str) {
-    print(name)
+    print(&name)
 }
 ```
 
@@ -126,7 +126,14 @@ fun main() {
 }
 ```
 
-方法的显式类型实参使用相同语法，例如 `value.convert::<Target>()`。类型位置仍然写作 `Vector<T>`，不需要 `::`。
+方法的显式类型实参使用相同语法，例如 `value.convert::<Target>()`。调用泛型类型上的关联函数时，类型实参写在类型路径段上：
+
+```riddle
+let values = Vector::<i32>::new();
+let converted = Wrapper::<i32>::convert::<bool>();
+```
+
+这里第一组参数选择 `impl<T>` 的 `T`，末尾一组参数选择关联函数自己的泛型参数。类型标注中仍然写作 `Vector<T>`，不需要 `::`。
 
 编译器会检查推断或显式给出的实参类型是否满足 bound；函数体内可以通过 bound 调用 trait 方法，C backend 会在单态化后静态分派到具体 impl。
 
@@ -182,7 +189,7 @@ fun make_adder(base: i32) -> impl Fn(i32) -> i32 {
 有些函数可能只声明签名，具体实现由外部提供：
 
 ```riddle
-fun print(value: i32);
+fun external_log(value: i32);
 ```
 
 这种形式以分号结束，没有函数体。
