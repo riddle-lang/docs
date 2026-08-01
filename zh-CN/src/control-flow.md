@@ -45,7 +45,7 @@ fun choose(flag: bool) -> i32 {
 ```riddle
 fun print_if_positive(x: i32) {
     if x > 0 {
-        print(&x);
+        print!("{}", x);
     }
 }
 ```
@@ -61,7 +61,7 @@ fun count_to_three() {
     let mut i = 0;
 
     while i < 3 {
-        print(&i);
+        print!("{}", i);
         i = i + 1;
     }
 }
@@ -74,6 +74,8 @@ fun count_to_three() {
 `for` 使用 `IntoIterator` / `Iterator` 协议遍历值：
 
 ```riddle
+use std::ops::range;
+
 fun sum_to_three() -> i32 {
     let mut sum = 0;
 
@@ -87,8 +89,8 @@ fun sum_to_three() -> i32 {
 
 标准库提供了三个常用可迭代值：
 
-- `range(start, end)` 产生半开区间 `[start, end)`；
-- 固定长度数组 `[T; N]` 会通过 `ArrayIter<T, N>` 逐个按值产出元素，元素类型不需要实现 `Copy`；
+- `std::ops::range(start, end)` 产生半开区间 `[start, end)`，使用前需要显式导入；
+- 固定长度数组 `[T; N]` 会通过 `std::array::IntoIter<T, N>` 逐个按值产出元素，元素类型不需要实现 `Copy`；
 - `Vector<T>` 会在循环中按值产出当前保存的元素并消耗向量。
 
 ```riddle
@@ -110,6 +112,8 @@ fun use_array() -> i32 {
 `break` 立即结束最近一层循环，`continue` 跳到最近一层循环的下一次迭代：
 
 ```riddle
+use std::ops::range;
+
 fun first_three_odd_sum() -> i32 {
     let mut sum = 0;
 

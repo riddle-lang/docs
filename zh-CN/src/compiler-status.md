@@ -90,7 +90,7 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - 模块和 `impl` 内的有值 `type` 别名，以及 trait 中可省略默认值的关联类型；
 - `let` 支持延迟初始化，首次赋值不要求 `mut`，并检查跨 `if`、`match`、循环的 definite-initialization；未初始化读取报 `E0059`，不可变绑定二次赋值报 `E0031`；
 - 函数定义和函数声明；
-- 泛型函数（类型参数和 const 参数从实参推断，支持 Rust 风格函数、方法及 `Type::<T>::function::<U>()` 显式参数、`<T: Trait>` bound、`where` 子句，C backend 单态化）；
+- 泛型函数（类型参数和 const 参数从实参与期望返回类型推断，支持 Rust 风格函数、方法及 `Type::<T>::function::<U>()` 显式参数、`<T: Trait>` bound、`where` 子句，C backend 单态化）；
 - 函数参数、返回类型、尾表达式和 `return`；
 - 块表达式；
 - 字段访问、函数调用、方法调用；
@@ -176,7 +176,7 @@ C backend 对整数回绕、除零、最小值除以 `-1`、移位计数和浮�
 - `impl` 上的 `where` 子句，并检查 Paterson condition：约束必须严格小于被实现的类型；
 - 算术、取余、位运算、移位、一元负号、逻辑非和复合赋值可通过对应的 `#[lang = "..."]` trait 为用户类型分派；
 - `==` / `!=` 检查 `PartialEq`，有序比较检查 `PartialOrd`；
-- 标准库 `Iterator` / `IntoIterator` 协议，含 `Range`、`range(start, end)`、数组 `IntoIterator` 和 `for` 遍历。
+- 标准库 `Iterator` / `IntoIterator` 协议，含 `std::ops::{Range, range}`、数组 `IntoIterator` 和 `for` 遍历。
 
 ### 属性和标准库内置项
 
@@ -200,19 +200,21 @@ match value {
 
 属性当前会进入 AST/HIR。编译器识别 `#[lang = "..."]`，用于把 trait 标记为编译器内置项。默认加载标准库时，该属性仅允许随编译器附加的标准库使用，用户包中出现会触发 E0049；使用 `--no-std` 时，参与编译的包可以为自定义 core 定义 lang item，编译器仍会检查名称、目标、固定签名和重复注册。
 
+Clue 支持 `#[proc_macro_derive(Name, attributes(...))]`、`#[proc_macro_attribute]` 和 `#[proc_macro]` 导出的 Riddle 过程宏。过程宏包由 `[lib] proc-macro = true` 标记并为宿主平台构建，也可以依赖并使用另一个过程宏包。宏可通过分组、别名、通配符或 `pub use` 导入独立的宏命名空间，混合 `use` 会保留普通名称；derive 只允许放在结构体或枚举上，Riddle 当前没有 union 条目。函数式宏使用 `name!()` 语法，可出现在表达式、条目、类型和模式位置。宏函数接收由 `Group`、`Ident`、`Punct` 和 `Literal` 组成的递归 `TokenStream`；输入、输出、诊断和 span 通过带版本的长度前缀结构化协议传递，输出 token 直接进入解析器。复制到输出的 token 会保留源位置，生成代码中的宏会继续展开，最大深度为 32。LSP 同步支持宏高亮、悬停、定义、引用、别名重命名和补全。
+
 当前标准库会自动拼到用户源码后面，根部通过 prelude 重导出常用项，同时按 Rust 风格分模块定义：
 
-prelude 直接提供 `Option`、`Result`、`String`、`Vector`、`TreeMap`、`TreeSet`、`HashMap`、`HashSet`、`Some`、`None`、`Ok`、`Err`、`Copy`、`Clone`、`Default`、`Into`、`Hash`、`print`、比较 trait 和迭代协议。
+prelude 只直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`、`Ok`、`Err`、`Copy`、`Clone`、`Drop`、`drop`、`Default`、`Into`、`panic`、比较 trait 和迭代协议。集合、格式化 trait、具体迭代器、区间、解析、时间及底层输出函数需要从各自模块显式导入；标准宏命名空间隐式提供 `#[derive(Debug)]`、`print!` 和 `println!`。
 
 - `std::option::Option<T>`，提供 `is_some`、`is_none`、`unwrap_or` 和 `or`；
 - `std::result::Result<T, E>`，提供 `is_ok`、`is_err`、`unwrap_or`、`ok` 和 `err`；
-- `std::io::{print, println}` 通过 `std::fmt::{Display, Formatter, Result}` 支持字符串、布尔、字符、整数和浮点标量；实现 `Display` 需要提供 `fmt(&self, formatter: &mut Formatter) -> Result`，浮点格式化使用固定六位小数；
+- `print!` / `println!` 通过 `std::io::{print, println, print_debug}` 和 `std::fmt::{Debug, Display, Formatter, Result}` 支持字符串、布尔、字符、整数和浮点标量；格式化 trait 和底层输出函数不在 prelude 中。`Debug` 与 `Display` 都使用 `fmt(&self, formatter: &mut Formatter) -> Result`，字符串和字符的 `Debug` 输出会添加引号并转义；标准 `#[derive(Debug)]` 支持结构体、泛型结构体以及 unit、tuple、named 三类枚举变体，`Option`、`Result`、`String`、`Vector`、`HashMap`、`HashSet`、`TreeMap` 和 `TreeSet` 均通过该派生实现 `Debug`，泛型元素必须实现 `Debug`；格式宏支持空调用、字符串字面量、多个 `{}` / `{:?}` 参数、尾随逗号以及 `{{` / `}}`，并按从左到右的顺序分别通过 `Display` / `Debug` 输出；索引参数、命名参数和其他格式说明符尚未实现；
 - `std::string::String` 提供 `new`、`from_str`、`as_str`、`len`、`capacity`、`is_empty`、`push_str` 和 `clear`；同一模块按 Rust 风格为 `str` 提供 `len`、`is_empty`、`as_bytes` 和按 Unicode `char` 遍历的 `StrIter`；
 - `std::vector::Vector<T>` 提供 `new`、`len`、`capacity`、`is_empty`、`push`、`pop`、`get`、`get_mut`、`swap`、`clear`、`as_slice`、读写下标和按值迭代；下标越界调用 `panic`，缓冲区通过运行时 `rgc_realloc`、`rgc_free` 管理；
 - `Vector<T>` 会拒绝零大小元素并检查容量乘法溢出；原始指针目前不能比较空值，因此尚不能在标准库内处理 C 分配失败；
 - `std::iter::{Iterator, IntoIterator}`；
 - `std::slice::{SliceIter, SliceIterMut}`，并为 `[T]` 提供长度、边界检查访问、原始指针访问和借用迭代；
-- `std::array` 中的按值、共享借用和可变借用数组迭代器，并兼容重导出为 `ArrayIter<T, const N>`；
+- `std::array` 中的按值、共享借用和可变借用数组迭代器；
 - `std::ops::{Range, range(start, end)}`；
 - `std::marker::Copy`；
 - `std::clone::Clone`；
@@ -221,7 +223,7 @@ prelude 直接提供 `Option`、`Result`、`String`、`Vector`、`TreeMap`、`Tr
 - `std::default::Default` 为标量、`Option<T>`、`String` 和 `Vector<T>` 提供默认值；`Default::default()` 支持按期望类型静态选择 impl；
 - `std::convert::Into<T>` 是 `?` 错误传播使用的错误转换协议；
 - `std::hash::Hash` 通过共享借用为标量提供确定性的 `usize` 哈希值；
-- `std::tree_map::TreeMap` 和 `std::tree_set::TreeSet` 使用红黑树，键要求实现 `Ord`；`std::hash_map::HashMap` 和 `std::hash_set::HashSet` 使用开放寻址哈希表、线性探测和负载扩容，键要求实现 `Hash + Eq`；
+- `std::collections::{TreeMap, TreeSet}` 使用红黑树，键要求实现 `Ord`；`std::collections::{HashMap, HashSet}` 使用开放寻址哈希表、线性探测和负载扩容，键要求实现 `Hash + Eq`；对应实现模块位于 `std::collections::{tree_map, tree_set, hash_map, hash_set}`；
 - `std::parse::parse_i32` 提供十进制 `i32` 解析；`std::time::time_now` 转发到 C `time`。
 
 `Default`、`Hash`、标量格式化和基础集合/解析/时间 API 已经具备可执行行为；`parse_i32` 当前不做溢出诊断。
@@ -268,7 +270,7 @@ prelude 直接提供 `Option`、`Result`、`String`、`Vector`、`TreeMap`、`Tr
 - `&str` 是 `{ ptr, len }` 胖指针，字符串字面量的类型也是 `&str`；
 - 字符串字面量支持 `"..."`、`r"..."`、`r#"..."#` 和 `r###"..."###`；
 - `extern "C"` 支持声明块和带函数体的导出定义；
-- C 导入中的 `&str` 映射为 `const char*`，带函数体的导出定义保留 `{ ptr, len }`；
+- C 导入中的 `&str` 映射为 `const char*`，显式 `#[c_export]` 包装函数也使用该参数 ABI；边界另一侧必须提供 NUL 终止的数据，需要保留长度时应显式传递指针和 `usize`；带函数体的既有 `extern "C"` 定义和普通 Riddle 函数仍使用 `{ ptr, len }`；
 - C backend 不按函数名提供任何内置 C helper，所有 `extern "C"` 声明都按普通外部符号生成；
 - 标准库通过 `as_bytes().len()` 实现 `str::len`，并用受限的同布局转换实现 `&str` / `&[u8]` 转换；`String::as_str` 先借用 `Vector<u8>` 为 `&[u8]`，再通过普通标准库 unsafe 函数转换为 `&str`，不使用函数 builtin，也不生成或链接 C helper；
 - `String` 以 `Vector<u8>` 持有 UTF-8 字节，支持追加、清空和借用为 `&str`；存活的 `as_str()` 视图会阻止可能使其失效的可变操作。
@@ -288,8 +290,8 @@ C backend 会把标量 std 运算 trait 的显式方法调用直接输出为带�
 | 工具 | 状态 |
 |------|------|
 | `riddlec` | 编译器 CLI，支持前端检查、MIR 降级和 C backend |
-| `riddle-lsp` | LSP 服务器，基于 `tower-lsp`，提供项目范围补全、悬停和定义/实现跳转，并发处理请求，按分析单元增量刷新诊断，并缓存当前文档的轻量语义 Token 结果 |
-| `clue` | 项目构建器，支持 `init`、`new`、`check`、`build` 和 `run`；二进制项目会保留 C 并生成本机可执行文件，库项目只输出 C |
+| `riddle-lsp` | LSP 服务器，基于 `tower-lsp`，提供项目范围补全、悬停、定义/实现跳转、引用、重命名和语义 Token，并识别过程宏命名空间 |
+| `clue` | 项目构建器，支持 `init`、`new`、`check`、`build` 和 `run`；二进制项目会保留 C 并生成本机可执行文件，库项目只输出 C，过程宏依赖构建为宿主进程 |
 
 ## 当前限制
 

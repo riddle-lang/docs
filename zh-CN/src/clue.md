@@ -128,6 +128,89 @@ fun main() -> i32 {
 
 作为依赖加载时，Clue 会优先使用 `[lib].path`；没有 `[lib]` 目标时，再依次寻找 `src/lib.rid`、`<package-name>.rid`、`lib.rid` 和 `src/main.rid`。依赖包需要用 `pub` 导出给调用方使用的函数、类型、模块或 `use` 重新导出。
 
+## 过程宏
+
+过程宏包使用 `[lib] proc-macro = true`：
+
+```toml
+[package]
+name = "answer-macros"
+
+[lib]
+path = "src/lib.rid"
+proc-macro = true
+```
+
+宏函数由 Riddle 编写并且必须公开。derive 宏和函数式宏使用
+`TokenStream -> TokenStream` 签名，属性宏接收属性参数与被标记条目两个 `TokenStream`：
+
+```riddle
+#[proc_macro_derive(Answer, attributes(answer))]
+pub fun derive_answer(input: TokenStream) -> TokenStream {
+    TokenStream::from_str("fun generated_answer() -> i32 { 42 }")
+        .unwrap_or(TokenStream::new())
+}
+
+#[proc_macro]
+pub fun answer(input: TokenStream) -> TokenStream {
+    TokenStream::from_str("42").unwrap_or(TokenStream::new())
+}
+
+#[proc_macro_attribute]
+pub fun replace(args: TokenStream, item: TokenStream) -> TokenStream {
+    item
+}
+```
+
+`TokenStream` 由 `TokenTree` 序列组成，而不是保存原始源码字符串。`TokenTree` 分为
+`Group`、`Ident`、`Punct` 和 `Literal`；分组递归包含另一个 `TokenStream`，每个 token
+都带有输入中的字节范围。宏可以借用或取得 token 的所有权进行迭代：
+
+```riddle
+for tree in &input {
+    match tree {
+        TokenTree::Ident(ident) => println!("{}", ident.as_str()),
+        TokenTree::Group(group) => {
+            for nested in group.stream() {
+                let span = nested.span();
+            }
+        },
+        _ => {},
+    }
+}
+```
+
+`TokenStream::from_str` 会执行词法分析，失败时返回 `LexError`，并把新 token 的位置设为当前宏调用点；`to_string()` 则提供源码文本视图。空白和注释不属于 token，因此不会逐字保留。`TokenStream::clone()` 共享底层 token，首次修改时才复制。Clue 与宏宿主之间传递结构化 token tree，编译器也直接把输出 token 送回解析器，不会把整个展开结果重新做一次词法分析。
+
+使用方把宏包声明为本地 path 依赖，再把 derive 宏导入独立的宏命名空间：
+
+```toml
+[dependencies]
+answer_macros = { package = "answer-macros", path = "../answer-macros" }
+```
+
+```riddle
+use answer_macros::{Answer, answer, replace};
+
+#[answer]
+#[derive(Answer)]
+struct Value {}
+
+#[replace]
+fun old_value() -> i32 { 0 }
+
+fun main() -> i32 { answer!() }
+```
+
+宏导入支持 `use answer_macros::{Answer as GenerateAnswer};` 和
+`use answer_macros::*;`。宏名可以与类型、trait 或值同名而不冲突；不导入时仍可使用
+`#[derive(answer_macros::Answer)]` 限定写法。derive 只能用于结构体和枚举；Riddle 当前没有
+union 条目。`pub use` 可以在模块中重导出过程宏，混合导入会保留同一条 `use` 中的普通名称。
+函数式宏可用于表达式、条目、类型和模式位置。`attributes(answer)` 注册的 helper 属性只在
+对应 derive 的输入条目、枚举变体和字段上有效，未注册的 helper 属性会在调用宏之前报错。
+
+Clue 会把过程宏包编译为宿主平台进程，而不会把它拼入目标程序。一次分析中的调用复用同一个进程；derive 和属性宏输出必须是顶层条目，函数式宏输出必须适合调用位置。宏诊断会使用传入的 `Span`，复制到输出的 token 也会把后续编译错误映回原位置；使用 `Span::call_site()` 创建的 token 和诊断则指向宏调用。生成代码中的宏会继续展开，最大深度为 32。过程宏包可以通过本地 path 依赖使用另一个过程宏包，`clue check` 也能直接检查过程宏包自身。LSP 会识别宏导入和调用，并提供分类高亮、悬停、定义跳转、引用、别名重命名和按宏种类过滤的补全。
+
 模块、`use`、`pub use` 和可见性规则见 [模块、use 与枚举](./modules-and-enums.md)。
 
 ## 项目诊断

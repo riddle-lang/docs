@@ -16,7 +16,7 @@ fun distance_squared(point: Point) -> i32 {
 fun main() {
     let point = Point { x: 3, y: 4 };
     let value = distance_squared(point);
-    print(&value)
+    print!("{}", value)
 }
 ```
 
@@ -63,7 +63,7 @@ fun distance_squared(point: Point) -> i32 {
 fun main() {
     let point = Point { x: 3, y: 4 };
     let value = distance_squared(point);
-    print(&value)
+    print!("{}", value)
 }
 ```
 

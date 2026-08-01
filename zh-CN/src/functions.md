@@ -10,7 +10,7 @@
 
 ```riddle
 fun greet() {
-    print(&"hello")
+    print!("{}", "hello")
 }
 ```
 
@@ -22,7 +22,7 @@ fun greet() {
 
 ```riddle
 fun greet(name: &str) {
-    print(&name)
+    print!("{}", name)
 }
 ```
 
@@ -117,7 +117,7 @@ where T: Named
 }
 ```
 
-调用泛型函数时，编译器会从实参推断类型参数；也可以在函数名后用 Rust 风格的 `::<...>` 显式指定：
+调用泛型函数或方法时，编译器会联合全部实参与调用位置的期望返回类型推断类型参数，实参的书写顺序不影响推导；也可以在函数名后用 Rust 风格的 `::<...>` 显式指定：
 
 ```riddle
 fun main() {

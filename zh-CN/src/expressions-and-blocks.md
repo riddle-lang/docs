@@ -114,7 +114,7 @@ fun main() {
         a + b
     };
 
-    print(&value)
+    print!("{}", value)
 }
 ```
 
@@ -130,10 +130,10 @@ fun main() {
 
     {
         let inner = 2;
-        print(&inner);
+        print!("{}", inner);
     }
 
-    print(&outer)
+    print!("{}", outer)
     // inner 在这里不可用
 }
 ```

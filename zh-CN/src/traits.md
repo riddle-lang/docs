@@ -86,9 +86,11 @@ impl Iterator for Counter {
 }
 ```
 
-`Iterator` 和 `IntoIterator` 是 `for item in value` 使用的协议。标准库把 `Option<T>` 放在 `std::option`、把 `Result<T, E>` 放在 `std::result`、把 `Range` 和 `range(start, end)` 放在 `std::ops`，这些常用项也会在根部重导出。与 Rust 一样，prelude 还会重导出 `Some`、`None`、`Ok`、`Err`、`Copy`、`Clone` 和比较 trait。固定长度数组 `[T; N]` 也已经有 `IntoIterator` 实现：
+`Iterator` 和 `IntoIterator` 是 `for item in value` 使用的协议。标准库把 `Option<T>` 放在 `std::option`、把 `Result<T, E>` 放在 `std::result`、把 `Range` 和 `range(start, end)` 放在 `std::ops`。与 Rust 一样，prelude 会重导出 `Some`、`None`、`Ok`、`Err`、`Copy`、`Clone` 和比较 trait，但不会自动导入 `Range` 或 `range`。固定长度数组 `[T; N]` 也已经有 `IntoIterator` 实现：
 
 ```riddle
+use std::ops::range;
+
 fun main() {
     for n in range(0, 3) {
         // n: i32
@@ -100,7 +102,7 @@ fun main() {
 }
 ```
 
-数组迭代器定义在 `std::array` 中，根部兼容重导出为 `ArrayIter<T, const N: usize>`。因此 `[1, 2, 3]` 会匹配 `impl<T, const N: usize> IntoIterator for [T; N]`。数组按值产出元素，当前实现不要求元素类型是 `Copy`。
+数组迭代器定义为 `std::array::IntoIter<T, const N: usize>`。因此 `[1, 2, 3]` 会匹配 `impl<T, const N: usize> IntoIterator for [T; N]`。数组按值产出元素，当前实现不要求元素类型是 `Copy`。
 
 ## 泛型约束
 
@@ -181,7 +183,7 @@ impl std::marker::Copy for Point { }
 fun main() {
     let p = Point { x: 1, y: 2 };
     let q = p;    // 复制而非移动
-    print(&p.x);   // OK：p 仍然可用
+    print!("{}", p.x);   // OK：p 仍然可用
 }
 ```
 
