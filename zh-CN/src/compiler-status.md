@@ -19,7 +19,7 @@ Riddle 仍处于开发阶段。本页记录当前仓库已经实现并被测试�
 命令行入口支持：
 
 ```bash
-riddlec [--verbose] [--backend c] [--output <file>] <file>...
+riddlec [--verbose] [--no-std] [--backend c] [--target <triple>] [--output <file>] <file>...
 ```
 
 `--backend c` 会生成调用 `rgc` ABI 的 C 代码；如需可执行文件，使用本机 `cc`、`gcc` 或 `clang` 同时编译生成结果与发行包附带的 `runtime.c`。`clue build` 会自动完成这一步，不依赖 Boehm GC。

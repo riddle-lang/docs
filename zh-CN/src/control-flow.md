@@ -2,6 +2,8 @@
 
 控制流决定程序在不同条件下执行哪些代码。Riddle 提供 `if`、`while`、`for` 和 `match`。
 
+`match` 在这里先介绍基本用法；引用模式、穷尽性检查和匹配人体工学等完整规则需要结构体和枚举知识，放在[枚举、模式与 match](./enums-and-patterns.md)一章。
+
 ## if 表达式
 
 `if` 根据条件选择一个分支：
@@ -87,25 +89,7 @@ fun sum_to_three() -> i32 {
 }
 ```
 
-标准库提供了三个常用可迭代值：
-
-- `std::ops::range(start, end)` 产生半开区间 `[start, end)`，使用前需要显式导入；
-- 固定长度数组 `[T; N]` 会通过 `std::array::IntoIter<T, N>` 逐个按值产出元素，元素类型不需要实现 `Copy`；
-- `Vector<T>` 会在循环中按值产出当前保存的元素并消耗向量。
-
-```riddle
-fun use_array() -> i32 {
-    let mut sum = 0;
-
-    for item in [1, 2, 3] {
-        sum += item;
-    }
-
-    sum
-}
-```
-
-用户类型只要实现 `IntoIterator`，并让它的 `IntoIter` 实现 `Iterator`，也可以用于 `for`。MIR 降级会把这类循环降成 `into_iter` 和 `next` 方法调用。
+`std::ops::range(start, end)` 产生半开区间 `[start, end)`，使用前需要显式导入。固定长度数组、`Vector`、切片和 `&str` 也都可以直接用于 `for`；如何为自定义类型实现 `IntoIterator`，见[闭包与迭代器](./functional.md)。
 
 ## break 与 continue
 
@@ -133,25 +117,20 @@ fun first_three_odd_sum() -> i32 {
 
 当前只支持无值、无标签的 `break;` 和 `continue;`，并且只能在 `while` 或 `for` 循环体中使用。
 
-## match 表达式
+## match 基础
 
-`match` 根据值的形状选择分支：
+`match` 根据值的形状选择分支。最简单的用法是匹配字面量：
 
 ```riddle
-enum Option {
-    None,
-    Some(i32),
-}
-
-fun unwrap_or_zero(value: Option) -> i32 {
-    match value {
-        Option::Some(n) => n,
-        Option::None => 0,
+fun classify(n: i32) -> i32 {
+    match n {
+        0 => 0,
+        _ => 1,
     }
 }
 ```
 
-`match` arm 可以带 guard：
+arm 由模式、可选的 `if` guard 和 `=>` 后的表达式组成：
 
 ```riddle
 fun classify(n: i32) -> i32 {
@@ -163,53 +142,17 @@ fun classify(n: i32) -> i32 {
 }
 ```
 
-当前模式支持 `_`、标识符绑定、字面量、路径、引用、元组、结构体和枚举变体。
-
-## 引用模式与匹配人体工学
-
-显式引用模式会解构恰好一层、且可变性必须相同的引用：
+标准库的 `Option<T>` 也是通过 `match` 处理的常见对象：
 
 ```riddle
-fun read(reference: &mut i32) -> i32 {
-    let &mut copied = reference;
-    copied
-}
-
-fun mixed(mut value: i32) -> i32 {
-    let (&mut copied, plain) = (&mut value, 4);
-    copied + plain
-}
-```
-
-显式模式内的绑定按值取得内容。上例的 `copied` 是 `i32` 副本，不是 `&mut i32`；若内容不是 `Copy`，会报告 `E0308`。`&pattern` 不能匹配 `&mut T`，`&mut pattern` 也不能匹配 `&T`。
-
-元组、结构体、枚举和字面量等非引用模式遇到引用输入时会自动逐层解引用，并继承默认绑定模式：
-
-```riddle
-struct Pair { left: i32, right: i32 }
-
-fun update(pair: &mut Pair) {
-    let Pair { left, right } = pair;
-    *left = 10;   // left: &mut i32
-    *right = 20;  // right: &mut i32
-}
-```
-
-经过共享引用时，内部绑定最终都是共享引用；只经过可变引用时则得到可变引用。裸标识符模式不会自动解引用，因此 `let whole = pair;` 仍让 `whole` 取得整个引用值。Riddle 没有 `ref` / `ref mut` 语法。
-
-结构化模式自动解引用后，如果默认绑定模式已经变为引用，内部不能再写 `mut binding` 或显式 `&pattern` / `&mut pattern`。需要显式引用模式时，应让它出现在默认 `move` 模式的位置。
-
-未限定的标识符模式会绑定并匹配任意值。因此下面的 `other` 不是常量，而是覆盖除前面 arm 之外所有剩余 `u8` 值的绑定：
-
-```riddle
-fun unsigned(value: u8) -> i32 {
+fun unwrap_or_zero(value: Option<i32>) -> i32 {
     match value {
-        0 => 0,
-        other => 1,
+        Some(n) => n,
+        None => 0,
     }
 }
 ```
 
-编译器使用模式矩阵检查 `match` 是否穷尽。检查会递归展开枚举 payload、元组和结构体字段，并识别 `bool`、`()` 与整数值域。缺少分支时会报告 `E0039` 和一个可覆盖的示例模式；整数匹配还会在诊断注记中列出未覆盖的连续区间。例如，只匹配 `u8` 的 `0` 和 `2` 时，注记会指出 `1` 与 `3..=255` 尚未覆盖。区间目前只用于诊断展示，不是可写在模式中的区间语法。
+`Some` / `None` 由 prelude 重导出，不需要显式导入。`match` 是表达式，每个 arm 必须产生兼容类型。
 
-带 guard 的 arm 不计入穷尽性，因为 guard 可能在运行时为 `false`。浮点数、字符和字符串也需要用 `_` 或标识符绑定覆盖其余值。
+模式系统、`let` 解构与穷尽性检查的完整规则见[枚举、模式与 match](./enums-and-patterns.md)。

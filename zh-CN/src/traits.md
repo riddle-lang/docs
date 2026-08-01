@@ -86,23 +86,7 @@ impl Iterator for Counter {
 }
 ```
 
-`Iterator` 和 `IntoIterator` 是 `for item in value` 使用的协议。标准库把 `Option<T>` 放在 `std::option`、把 `Result<T, E>` 放在 `std::result`、把 `Range` 和 `range(start, end)` 放在 `std::ops`。与 Rust 一样，prelude 会重导出 `Some`、`None`、`Ok`、`Err`、`Copy`、`Clone` 和比较 trait，但不会自动导入 `Range` 或 `range`。固定长度数组 `[T; N]` 也已经有 `IntoIterator` 实现：
-
-```riddle
-use std::ops::range;
-
-fun main() {
-    for n in range(0, 3) {
-        // n: i32
-    }
-
-    for value in [1, 2, 3] {
-        // value: i32
-    }
-}
-```
-
-数组迭代器定义为 `std::array::IntoIter<T, const N: usize>`。因此 `[1, 2, 3]` 会匹配 `impl<T, const N: usize> IntoIterator for [T; N]`。数组按值产出元素，当前实现不要求元素类型是 `Copy`。
+`Iterator` 和 `IntoIterator` 是 `for item in value` 使用的协议。标准库把 `Option<T>` 放在 `std::option`、把 `Result<T, E>` 放在 `std::result`、把 `Range` 和 `range(start, end)` 放在 `std::ops`。与 Rust 一样，prelude 会重导出 `Some`、`None`、`Ok`、`Err`、`Copy`、`Clone` 和比较 trait，但不会自动导入 `Range` 或 `range`。固定长度数组 `[T; N]` 也已经有 `IntoIterator` 实现，数组迭代器定义为 `std::array::IntoIter<T, const N: usize>`，因此 `[1, 2, 3]` 会匹配 `impl<T, const N: usize> IntoIterator for [T; N]`，按值产出元素且不要求元素类型是 `Copy`。在 `for` 中使用这些类型的完整示例见[闭包与迭代器](./functional.md#内置可迭代值)。
 
 ## 泛型约束
 
@@ -240,4 +224,6 @@ fun main() -> i32 {
 
 `PartialEq::eq`、`PartialOrd::partial_cmp` 和 `Ord::cmp` 可以作为普通方法调用；整数、字符和布尔值返回 `Ordering`，浮点比较遇到 NaN 时返回 `None`。当前编译器会为用户类型把算术、取余、位运算、移位、一元负号、逻辑非、复合赋值和比较运算分派到对应的 `#[lang = "..."]` trait 方法，并用 `Output` 关联类型决定非赋值算术运算的结果类型。`==` 调用 `PartialEq::eq`，`!=` 调用默认的 `PartialEq::ne`；`<`、`<=`、`>`、`>=` 分别调用 `PartialOrd::lt`、`le`、`gt`、`ge`，这些默认方法通过 `partial_cmp` 判断，遇到 `None` 时均返回 `false`。
 
-`Default` 的关联 trait 函数调用、格式化器和哈希器协议尚未实现；std 不再为这些能力暴露空壳 trait。浮点余数同样暂未支持，`Rem` 和 `RemAssign` 只为整数实现。
+标准库还提供普通 trait `Default`、`Hash`、`Display` 和 `Debug`。`Default::default()` 会根据期望类型静态选择 impl；`Hash` 用于哈希集合；`Display` / `Debug` 通过 `Formatter` 支持 `print!`、`println!` 与 `#[derive(Debug)]`。它们的日常用法见[常用标准库](./standard-library.md)。
+
+`Rem` 和 `RemAssign` 已为整数及 `f32` / `f64` 实现。C backend 对浮点余数生成 `fmod` 调用。

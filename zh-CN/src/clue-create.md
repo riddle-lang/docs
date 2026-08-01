@@ -1,4 +1,4 @@
-# 创建项目
+# 创建与构建项目
 
 本页从一个空目录开始创建并构建 Clue 项目。
 
@@ -133,7 +133,7 @@ pub fun one() -> i32 {
 }
 ```
 
-也就是说，`math/src/lib.rid` 中的私有函数仍只能被 `math` 包内部使用，`hello` 只能通过 `math::one()` 访问 `pub` 导出的项。模块、`use` 和可见性规则见 [模块、use 与枚举](./modules-and-enums.md)。
+也就是说，`math/src/lib.rid` 中的私有函数仍只能被 `math` 包内部使用，`hello` 只能通过 `math::one()` 访问 `pub` 导出的项。模块、`use` 和可见性规则见[模块、use 与包](./modules.md)。
 
 ## 输出文件
 

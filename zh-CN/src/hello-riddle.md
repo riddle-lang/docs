@@ -1,7 +1,30 @@
 # 你好，Riddle
 
-学习一门语言，最好的方式通常不是先背语法，而是先看一段能表达真实意图的代码。
-这一章会从一个很小的程序开始，介绍 Riddle 程序由哪些部分组成。
+这一章创建一个真实项目，写入一段完整代码，然后让 Clue 检查并运行它。
+
+## 创建项目
+
+在终端执行：
+
+```bash
+clue new hello
+cd hello
+```
+
+Clue 会创建：
+
+```text
+hello/
+  Clue.toml
+  src/
+    main.rid
+```
+
+`Clue.toml` 描述包和构建目标，`src/main.rid` 是默认二进制入口。
+
+## 写入第一个程序
+
+把 `src/main.rid` 改成：
 
 ```riddle
 struct Point {
@@ -16,69 +39,40 @@ fun distance_squared(point: Point) -> i32 {
 fun main() {
     let point = Point { x: 3, y: 4 };
     let value = distance_squared(point);
-    print!("{}", value)
+    println!("distance squared = {}", value);
 }
 ```
 
-这段程序做了三件事：
+先检查项目：
 
-- 定义一个 `Point` 结构体；
-- 定义一个 `distance_squared` 函数；
-- 在 `main` 中创建一个点并调用函数。
-
-## 程序从数据开始
-
-`struct Point` 定义了一种数据形状：
-
-```riddle
-struct Point {
-    x: i32,
-    y: i32,
-}
+```bash
+clue check
 ```
 
-它表示一个 `Point` 有两个字段：`x` 和 `y`，类型都是 `i32`。
-你可以把结构体理解成“把相关数据放在一起”的方式。
+检查通过后构建并运行：
 
-## 函数描述行为
-
-函数使用 `fun` 定义：
-
-```riddle
-fun distance_squared(point: Point) -> i32 {
-    point.x * point.x + point.y * point.y
-}
+```bash
+clue run
 ```
 
-`point: Point` 表示函数接收一个 `Point` 参数。
-`-> i32` 表示函数返回一个 `i32`。
+程序输出的最后一行应为：
 
-函数体最后一行没有分号，因此它是这个块的返回值。这种写法让简单计算更直接，不需要每次都写 `return`。
-
-## main 是入口
-
-`main` 通常是程序的入口：
-
-```riddle
-fun main() {
-    let point = Point { x: 3, y: 4 };
-    let value = distance_squared(point);
-    print!("{}", value)
-}
+```text
+distance squared = 25
 ```
 
-`let point = ...` 创建一个变量绑定。Riddle 中变量默认不可变，这意味着你不能在后面随意修改 `point`。
-如果你确实需要修改变量，需要显式写出 `mut`，这会在后面的章节中介绍。
+## 这段代码包含什么
 
-## 值会被移动
+`struct Point` 定义一种数据形状，两个字段都是 `i32`。`Point { x: 3, y: 4 }` 构造一个值。
 
-注意这行代码：
+函数使用 `fun` 声明。参数类型写在名称后，返回类型写在 `->` 后。`distance_squared` 的最后一个表达式没有分号，因此它成为函数返回值。
 
-```riddle
-let value = distance_squared(point);
-```
+`let` 创建默认不可变的绑定。`println!` 使用 `{}` 按 `Display` 格式输出值。
 
-Riddle 的值默认遵循移动语义。把 `point` 传给函数时，`point` 的值会被移动进函数。
-移动之后，原来的 `point` 绑定不再可用。
+把 `point` 传给 `distance_squared` 会移动这个结构体，调用后原绑定不再可用。这里恰好不再需要它；完整规则会在[移动语义](./move-semantics.md)解释。
 
-这种规则让资源归属更清晰，也让编译器更容易判断一个值什么时候可以被释放、什么时候需要提升到运行时管理的堆区域。
+## 检查与运行的区别
+
+`clue check` 执行解析、名字解析、类型检查以及移动、借用和逃逸分析，但不调用系统 C 编译器。`clue run` 会先完成构建，再运行生成的本机可执行文件。
+
+项目清单、本地依赖、缓存和输出路径稍后统一放在[创建与构建项目](./clue-create.md)说明。现在先进入[Riddle 基础](./basics.md)。

@@ -34,7 +34,7 @@ fun add(a: i32, b: i32) -> i32 {
 }
 ```
 
-参数也是绑定。把值传入函数时，默认会发生移动。对于简单数字这类值，语言可以选择复制或优化，但从语义上你应该先理解为“值交给了函数”。
+参数也是绑定。传入非 `Copy` 值会移动所有权；整数、布尔值等实现了 `Copy` 的类型则按复制语义传入。完整规则见[移动语义](./move-semantics.md)。
 
 ## 返回值
 
@@ -151,38 +151,7 @@ fun main() {
 
 ## 可调用参数与返回值
 
-参数位置使用 `impl Fn`、`impl FnMut` 或 `impl FnOnce` 接收匿名函数和安全命名函数项：
-
-```riddle
-fun apply(f: impl Fn(i32) -> i32, value: i32) -> i32 {
-    f(value)
-}
-
-fun call_twice(mut f: impl FnMut(i32) -> i32, value: i32) -> i32 {
-    f(value);
-    f(value)
-}
-```
-
-`mut` 修饰参数绑定，因此也可以用于普通参数。每个 `impl Fn*` 参数引入独立的隐藏类型；需要让多个参数保持同一具体类型时，显式声明泛型参数：
-
-```riddle
-fun combine<F>(first: F, second: F, value: i32) -> i32
-where F: Fn(i32) -> i32
-{
-    first(value) + second(value)
-}
-```
-
-返回位置的 `impl Fn*` 隐藏一个具体返回类型：
-
-```riddle
-fun make_adder(base: i32) -> impl Fn(i32) -> i32 {
-    move fun(value: i32) { base + value }
-}
-```
-
-所有返回路径必须产生同一个具体匿名函数或命名函数项类型。`Fn`、`FnMut`、`FnOnce` 只能作为编译器提供的静态能力使用；当前不支持 `dyn Fn*`，用户代码也不能手动实现它们。不安全函数项不能传给安全的 `Fn*` 参数。
+参数位置使用 `impl Fn`、`impl FnMut` 或 `impl FnOnce` 接收匿名函数和安全命名函数项，返回位置的 `impl Fn*` 隐藏一个具体返回类型。`Fn`、`FnMut`、`FnOnce` 只能作为编译器提供的静态能力使用；当前不支持 `dyn Fn*`，用户代码也不能手动实现它们。完整的捕获规则、调用能力与限制见[闭包与迭代器](./functional.md#可调用参数与返回值)。
 
 ## 函数声明
 

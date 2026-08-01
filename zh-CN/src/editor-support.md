@@ -4,7 +4,7 @@ Riddle 通过 `riddle-lsp` 为编辑器提供实时诊断、补全、语义高�
 
 ## 准备 riddle-lsp
 
-先按照[安装 Riddle 环境](./install.md)安装工具链，并确认编辑器启动时能找到服务器：
+先按照[安装 Riddle 工具链](./install.md)完成安装，并确认编辑器启动时能找到服务器：
 
 ```bash
 riddle-lsp --version

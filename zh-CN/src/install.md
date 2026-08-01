@@ -1,15 +1,6 @@
-# 安装 Riddle 环境
+# 安装 Riddle 工具链
 
-因为 Riddle 是使用 Rust 编写的，所以在编译之前请先安装 Rust。
-如果你还没有安装，可以参考 [Rust 圣经的安装章节](https://course.rs/first-try/installation.html) 或 Rust 官方的 [rustup](https://rustup.rs/) 页面。
-
-安装完成后，请先确认 `cargo` 可用：
-
-```bash
-cargo --version
-```
-
-如果命令能输出版本号，就可以继续构建 Riddle。
+最省事的方式是下载预编译发布包，它不要求本机先安装 Rust。只有从源码安装 Riddle 时才需要较新的 Rust stable；可以参考[Rust 圣经的安装章节](https://course.rs/first-try/installation.html)或 Rust 官方的 [rustup](https://rustup.rs/) 页面。
 
 ## 下载预编译版本
 
@@ -109,10 +100,10 @@ rustup update stable
 
 ### 如何运行 C backend 的输出？
 
-`riddlec --backend c` 只生成 `.c` 文件。请使用系统中的 `cc`、`gcc` 或 `clang` 编译该文件；生成代码自带 GC，不需要 `-lgc`。
+`riddlec --backend c` 只生成 `.c` 文件。请使用系统中的 `cc`、`gcc` 或 `clang`，把生成文件与发行包附带的 `runtime.c` 一起编译；默认运行时不依赖 Boehm GC，因此不需要 `-lgc`。`clue build` 会自动完成这一步。
 
 ### 示例文件在哪里？
 
 仓库不单独维护 `examples/` 目录。可以使用 `clue new` 创建最小项目；其他语言能力以本书中的可运行代码片段和测试为准。
 
-不过示例可能会跟随语言设计快速变化。学习 Riddle 的主要概念时，请优先阅读本书后续的“Riddle 基础”“数据与抽象”和“所有权与内存”。
+不过示例可能会跟随语言设计快速变化。学习 Riddle 的主要概念时，请按目录继续阅读“Riddle 基础”“所有权与内存”和“数据建模与抽象”。

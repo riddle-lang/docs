@@ -1,4 +1,4 @@
-# FFI 与工具链
+# FFI 与底层工具链
 
 本页汇总当前仓库里和语言使用直接相关的工具、后端和 FFI 能力。
 
@@ -7,7 +7,7 @@
 `riddlec` 是当前命令行编译器入口：
 
 ```bash
-riddlec [--verbose] [--backend c] [--output <file>] <file>...
+riddlec [--verbose] [--no-std] [--backend c] [--target <triple>] [--output <file>] <file>...
 ```
 
 常用参数：
@@ -15,7 +15,9 @@ riddlec [--verbose] [--backend c] [--output <file>] <file>...
 | 参数 | 作用 |
 |------|------|
 | `--verbose`, `-v` | 打印 parse、HIR lower、type check、move/escape analysis、MIR lowering 的状态 |
+| `--no-std` | 不加载随编译器附带的标准库 |
 | `--backend c`, `-b c` | 使用 C backend 生成代码 |
+| `--target <triple>` | 选择受支持的目标平台 triple |
 | `--output <file>`, `-o <file>` | 指定输出文件 |
 | `--version`, `-V` | 打印版本号和构建时 git commit hash |
 | `--help`, `-h` | 打印帮助 |
@@ -47,6 +49,28 @@ cc hello.c crates/gc/src/runtime.c -o hello
 - `--output app.c`：写出 `app.c`；
 - 其他输出名会追加 `.c`，例如 `--output app.h` 写出 `app.h.c`；
 - 不写 `--output`：按第一个输入文件名派生 `.c` 输出名。
+
+## C 类型映射
+
+当前后端使用以下主要表示：
+
+| Riddle | C |
+|--------|---|
+| `i8` / `i16` / `i32` / `i64` | `int8_t` / `int16_t` / `int32_t` / `int64_t` |
+| `u8` / `u16` / `u32` / `u64` | `uint8_t` / `uint16_t` / `uint32_t` / `uint64_t` |
+| `isize` / `usize` | `ptrdiff_t` / `size_t` |
+| `bool` | `bool` |
+| `char` | `uint32_t` |
+| `()` | `void` |
+| `&T`（定长类型） | `T*` |
+| `*const T` / `*mut T` | `T*` |
+| `[T; N]` | C 数组；零长度数组使用严格 C11 兼容的占位存储 |
+| `enum` | 带 tag 和 payload 字段的 C `struct` |
+| callable（内部） | `{ call, env, drop }`，调用与析构接收隐藏环境参数 |
+| `&[T]`（内部） | 携带指针与长度的切片结构 |
+| `&str`（Riddle 内部） | `riddle_str { ptr, len }` |
+
+切片不能作为单个 C extern 参数传递，应显式拆成指针和长度。`&str` 在导入与导出边界上的特殊规则见下一节。
 
 ## extern "C"
 
@@ -90,7 +114,16 @@ fun main() {
 }
 ```
 
-带函数体的 `extern "C"` 是导出定义，不会再作为导入重复声明。它的 `&str` 参数和返回值保留 `riddle_str { ptr, len }` C 结构体 ABI，以免丢失长度。
+带函数体的 `extern "C"` 是导出定义，不会再作为导入重复声明。它的 `&str` 参数和返回值保留 `riddle_str { ptr, len }` C 结构体 ABI，以免丢失长度：
+
+```c
+struct riddle_str {
+    const char *ptr;
+    size_t len;
+};
+```
+
+在 64 位目标上该结构体占 16 字节，在 32 位目标上占 8 字节。裸 `str` 没有独立的运行时值或布局。
 
 ## unsafe、原始指针和 as
 
