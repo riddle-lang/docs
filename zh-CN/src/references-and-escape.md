@@ -198,3 +198,5 @@ fun maybe(flag: bool) -> &Foo {
 | 未逃逸 / 逃逸的闭包环境 | `Alloca` / `HeapAlloc` |
 
 C backend 会把 `HeapAlloc` 降为运行时 ABI 的 `rgc_alloc`。`clue build` 默认链接内置 GC，也可以按 `Clue.toml` 的 `[runtime].source` 链接自定义 GC 或分配器；直接编译 `riddlec` 生成的 C 时需要同时提供一个运行时实现。
+
+二进制包设置 `[runtime] gc = false` 后，C backend 不再生成 `rgc_*` 调用，运行时也不包含收集器或根扫描。拥有所有权的堆值改由 `riddle_alloc` / `riddle_free` 管理；原本只能依靠 GC 延长栈对象寿命的引用逃逸会被 E0310 拒绝，输入引用的直接转发不受影响。

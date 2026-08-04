@@ -68,6 +68,13 @@ let single: (i32,) = (42,);
 let unit: () = ();
 ```
 
+元组元素也可以用数字字段访问，索引从 `0` 开始：
+
+```riddle
+let number = pair.0;
+let flag = pair.1;
+```
+
 元组可以通过模式拆开：
 
 ```riddle

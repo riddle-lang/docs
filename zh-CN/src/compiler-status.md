@@ -93,7 +93,7 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - 泛型函数（类型参数和 const 参数从实参与期望返回类型推断，支持 Rust 风格函数、方法及 `Type::<T>::function::<U>()` 显式参数、`<T: Trait>` bound、`where` 子句，C backend 单态化）；
 - 函数参数、返回类型、尾表达式和 `return`；
 - 块表达式；
-- 字段访问、函数调用、方法调用；
+- 结构体字段、元组数字字段（`.0`、`.1` 等）、函数调用和方法调用；
 - 数组字面量、数组重复表达式 `[value; N]`、数组与切片安全索引（越界终止并报告运行时错误）；原始指针索引仍需 `unsafe` 且不做边界检查；
 - 结构体字面量和字段简写；
 - 类型转换表达式 `expr as Type`；支持安全的 `u8 as char` 与 `&str` 到 `&[u8]`，`(*const T, usize)` / `(*mut T, usize)` 到 `&[T]`、`&[u8]` 到 `&str` 的 DST 等布局转换仅允许在 `unsafe` 中使用；

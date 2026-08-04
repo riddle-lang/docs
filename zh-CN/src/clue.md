@@ -98,6 +98,15 @@ void rgc_collect(void);
 
 `rgc_alloc` 返回的地址必须满足普通 C 对象的对齐要求，并且在引用仍可能存在时不能移动。`rgc_realloc` 与 `rgc_free` 供标准库容器（如 `Vector`）显式管理缓冲区：`rgc_realloc` 迁移并保留原内容，`rgc_free` 立即释放且必须接受空指针；基于 malloc 的分配器可直接委托给 `realloc`/`free`。无回收分配器可以忽略 `stack_bottom`，并把 `rgc_collect` 实现为空函数。当前 ABI 不支持移动式 GC、finalizer 或多线程栈注册。
 
+要像 Rust 一样完全关闭 GC，在二进制包中设置：
+
+```toml
+[runtime]
+gc = false
+```
+
+这不是把 `rgc_collect` 留空，而是从生成结果中移除收集器、根扫描和全部 `rgc_*` 符号，改用 `riddle_alloc`、`riddle_realloc`、`riddle_free` 管理有所有者的堆值。闭包环境和容器缓冲区在所有者结束时确定性释放；需要让栈上值活过其作用域的引用会报告 E0310。输入引用仍可在不延长生命周期的情况下转发。`gc = false` 不能与 `source` 同时声明。
+
 运行时属于最终进程，因此 `[runtime]` 只允许出现在二进制包；库和依赖包只生成 ABI 调用，不能选择运行时。
 
 ## 本地依赖

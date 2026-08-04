@@ -123,7 +123,7 @@ lambda_param = "mut"? ident (":" ty)?;
 
 unary = prefix_op unary | postfix;
 
-postfix = primary ( "::" "<" type_arg_list ">" "(" arg_list ")" | "(" arg_list ")" | "." ident | "[" expression "]" | struct_expr_fields | "::" "<" type_arg_list ">" struct_expr_fields | "." ident "(" arg_list ")" | "?" )*;
+postfix = primary ( "::" "<" type_arg_list ">" "(" arg_list ")" | "(" arg_list ")" | "." (ident | number) | "[" expression "]" | struct_expr_fields | "::" "<" type_arg_list ">" struct_expr_fields | "." ident "(" arg_list ")" | "?" )*;
 
 arg_list = (expression ("," expression)*)?;
 
@@ -163,7 +163,7 @@ enum_pattern = path | path "(" (pattern ("," pattern)* ","?)? ")" | path "{" (fi
 // Prefix (right):  + - & && * !       rbp = 14
 //
 // Postfix:
-//   () . [] ?      left-assoc        (lbp = 15)
+//   () . [] ?   left-assoc    (lbp = 15)
 //
 // Infix:
 //   as                            (lbp=13, rbp=13)

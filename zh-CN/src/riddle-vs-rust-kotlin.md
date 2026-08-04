@@ -26,7 +26,7 @@ GC 只决定存储位置，不代替所有权。移动后使用、冲突借用�
 
 ### 语法只是子集与重新组合
 
-Riddle 使用 Rust 风格的尾表达式、`struct`、`enum`、`trait`、`impl`、`match`、`mod` 和 `use`，但当前没有 `if let`、`let else`、区间模式、`dyn Trait`、声明式宏或 `async` / `await`。泛型和 callable 主要通过静态单态化实现。
+Riddle 使用 Rust 风格的尾表达式、`struct`、`enum`、`trait`、`impl`、`match`、`mod` 和 `use`，但当前没有 `if let`、`let else`、区间模式、`dyn Trait` 或声明式宏。泛型和 callable 主要通过静态单态化实现。
 
 ### Cargo 与 Clue 不是同一个工具
 
