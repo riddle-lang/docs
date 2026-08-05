@@ -53,6 +53,21 @@ clue --version
 riddle-lsp --version
 ```
 
+## 验证源码树
+
+提交源码变更前，运行完整 workspace 测试、安装入口检查、格式检查和最高等级 Clippy：
+
+```bash
+cargo test --workspace --all-targets
+cargo check -p riddle --features install-bins --bins
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features --keep-going -- -D warnings -D clippy::pedantic -D clippy::nursery -D clippy::cargo -A clippy::multiple_crate_versions
+```
+
+根包的 `install-bins` feature 只负责发布 `clue`、`riddle-lsp` 和 `riddlec`。不要把 `--all-features` 加到 workspace 测试命令中，否则根发行包与成员 crate 的同名二进制会触发 Cargo 输出文件碰撞警告；独立的 `cargo check` 已覆盖这些安装入口。
+
+Clippy 唯一排除的规则是 `multiple_crate_versions`。当前 Cargo 依赖元数据同时包含 `hashbrown 0.14/0.17` 和 `syn 2/3`；该例外不屏蔽源码 lint，也不能用新增 `#[allow(clippy::...)]` 代替修复。升级依赖后先用 `cargo tree -d` 审计活动依赖，再移除 `-A clippy::multiple_crate_versions` 重跑 Clippy；无告警时即可删除这个例外。
+
 需要实时诊断和语义高亮时，继续阅读[编辑器与 LSP](./editor-support.md)。
 
 当前命令行入口是 `riddlec`：
