@@ -50,16 +50,25 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - 完整的诊断流水线：解析错误、HIR 诊断、类型检查错误、move/escape 分析诊断全部通过 LSP 推送；
 - 增量文本同步（`TextDocumentSyncKind::INCREMENTAL`）；
 - UTF-16 位置编码（正确处理多字节字符如 emoji）；
-- 补全（`textDocument/completion`）：在 Clue 项目中加载模块和本地依赖，优先使用所有已打开文件的未保存内容；候选遵循词法作用域，包含参数、局部变量和模式绑定，并支持字段、实例方法、模块项、枚举变体、关联函数及导入别名；
+- 多工作区管理与索引：发现每个工作区文件夹中的 Clue 项目，在内存中索引未打开文件的符号、静态调用边和直接类型关系；文件或 manifest 变化只失效受影响的项目快照；
+- 补全（`textDocument/completion`）：在 Clue 项目中加载模块和本地依赖，优先使用所有已打开文件的未保存内容；候选遵循词法作用域，包含参数、局部变量和模式绑定，并支持字段、实例方法、模块项、枚举变体、关联函数及导入别名；不可见的公开符号可生成独立 `use path;` 编辑完成自动导入，重名声明保留独立路径；
 - 悬停（`textDocument/hover`）：显示函数签名、字段与参数类型，以及局部表达式的推断类型；
-- 定义与实现跳转（`textDocument/definition`、`textDocument/implementation`）：支持局部绑定、模块项、字段、方法及跨文件符号，并把 trait 调用分别映射到 trait 声明和具体 impl；
+- 签名帮助（`textDocument/signatureHelp`）：显示函数或方法签名，并跟踪嵌套调用中的当前参数；
+- 声明、定义、类型定义与实现跳转（`textDocument/declaration`、`textDocument/definition`、`textDocument/typeDefinition`、`textDocument/implementation`）：支持局部绑定、模块项、字段、方法及跨文件符号，并把 trait 调用分别映射到 trait 声明和具体 impl；
+- 静态调用层级与类型层级：调用边覆盖编译器能够静态确定的自由函数、命名函数值、固有方法和 trait 方法声明；类型层级连接直接 supertrait、子 trait 及 `impl Trait for Type` 的实现类型；
+- 项目级引用、重命名、文档高亮、文档符号与工作区符号搜索，支持未打开模块和非文件 URI；
+- 文档格式化与基于语法块的代码折叠；
+- Inlay Hint 同时提供推断的局部类型和可省略的调用参数名；
+- Code Action 可为可变闭包绑定补 `mut`，也可把不安全操作包入 `unsafe` 块；
 - 语义 Token（`textDocument/semanticTokens/full`），内置类型使用 `keyword`，区分自由函数、方法、struct、enum 和 trait，关联函数使用 `method` / `static`，标准库符号使用 `defaultLibrary`，并包含函数、参数和方法 `declaration` 及可变局部变量 `declaration` / `mutable` 标记；
 - 诊断区分主标签和次要标签（related information），错误码可跳转到错误码手册，注释和修复建议分别以 `note:` / `help:` 附加；
 - Clue 项目按原始文件 URI 发布诊断，包括未打开模块，并在重新分析后清理过期诊断；
 - 诊断严重性层级：Error、Warning、Information、Hint；
-- 文档变更会先合并短时间内的连续输入，再在后台运行诊断并丢弃过期结果；未变化的文件和无关 Clue 项目直接复用诊断，变化的分析单元复用增量语法树、函数体和全局类型检查缓存，在声明、overlay、磁盘源码或 manifest 变化时保守失效；诊断在 move/borrow 检查后停止，不生成 MIR；UTF-16 位置通过行索引换算，语义 Token 使用包含未保存 overlay 的项目级 HIR，并按文档文本和分析修订缓存；
+- 文档变更会先合并短时间内的连续输入，再在后台运行诊断并协作式取消过期分析；未变化的文件和无关 Clue 项目直接复用诊断，变化的分析单元复用增量语法树、函数体和全局类型检查缓存，在声明、overlay、磁盘源码或 manifest 变化时保守失效；诊断在 move/borrow 检查后停止，不生成 MIR；UTF-16 位置通过行索引换算，语义 Token 使用包含未保存 overlay 的项目级 HIR，并按文档文本和分析修订缓存；
 - 支持动态注册 `.rid` 与 `Clue.toml` 文件监听，编辑器外部的源码、模块和 manifest 变更会触发项目缓存失效与重新诊断；
 - 仓库内提供 Helix、VS Code、Zed 和 IntelliJ IDEA 2026.1+ 的 `.rid` 文件与 `riddle-lsp` 适配；
+
+工作区中的 Clue 项目会建立内存索引。补全可通过独立的 `use path;` 编辑自动导入可达的公开符号；调用层级只包含编译器能够静态解析的目标，不推测函数指针、闭包或 Trait 的运行时分派。
 
 安装和验证步骤见[编辑器与 LSP](./editor-support.md)。
 
@@ -290,7 +299,7 @@ C backend 会把标量 std 运算 trait 的显式方法调用直接输出为带�
 | 工具 | 状态 |
 |------|------|
 | `riddlec` | 编译器 CLI，支持前端检查、MIR 降级和 C backend |
-| `riddle-lsp` | LSP 服务器，基于 `tower-lsp`，提供项目范围补全、悬停、定义/实现跳转、引用、重命名和语义 Token，并识别过程宏命名空间 |
+| `riddle-lsp` | LSP 服务器，基于 `tower-lsp`，提供诊断、补全、悬停、签名帮助、符号导航、引用、重命名、格式化、Inlay Hint 和语义 Token，并识别过程宏命名空间 |
 | `clue` | 项目构建器，支持 `init`、`new`、`check`、`build` 和 `run`；二进制项目会保留 C 并生成本机可执行文件，库项目只输出 C，过程宏依赖构建为宿主进程 |
 
 ## 当前限制
