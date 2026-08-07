@@ -474,7 +474,7 @@ trait Foo {}
 
 ---
 
-## HIR 降级与名字解析 (E0040, E0050–E0052)
+## HIR 降级与名字解析 (E0040, E0050–E0052, E0064)
 
 <a id="e0040"></a>
 ### E0040 — 语法降级错误
@@ -500,6 +500,14 @@ let x = missing_name;  // E0050: unresolved name
 `use path::*;` 的目标模块无法解析。
 ```riddle
 use missing::*;  // E0052: glob import target not found
+```
+
+<a id="e0064"></a>
+### E0064 — 同一作用域重复定义名称
+函数、结构体、枚举、trait、常量、类型别名和模块共享当前作用域的声明名称；同一作用域不能重复定义，嵌套在不同模块中的同名声明不冲突。
+```riddle
+fun hello() -> i32 { 0 }
+fun hello() -> i32 { 1 }  // E0064: `hello` is defined multiple times
 ```
 
 ---
