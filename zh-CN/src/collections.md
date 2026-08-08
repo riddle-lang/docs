@@ -95,7 +95,7 @@ fun main() {
 | `TreeMap<K, V>` | `Ord` | 红黑树，键有序 |
 | `TreeSet<T>` | `Ord` | 只有键的有序集合 |
 
-四个类型都提供 `insert`、`len`、`is_empty` 和 `clear`。键要求决定选择：需要排序时用 `Tree*`，否则优先 `Hash*`。当前类型名就是这四个完整名称，不提供 `Map` / `Set` 别名。
+四个类型都提供 `new`、`insert`、`len` 和 `is_empty`；映射类型另有 `get` / `contains_key`，集合类型另有 `contains`，当前没有 `clear`。键要求决定选择：需要排序时用 `Tree*`，否则优先 `Hash*`。当前类型名就是这四个完整名称，不提供 `Map` / `Set` 别名。
 
 ## 数组与切片
 

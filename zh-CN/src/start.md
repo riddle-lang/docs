@@ -8,7 +8,7 @@ Riddle `v0.2.0` 提供预编译发布包，也可以从源码安装。两种方�
 - `riddlec`：检查单个源码入口并生成 C；
 - `riddle-lsp`：向编辑器提供语言服务。
 
-先按[安装 Riddle 工具链](./install.md)完成安装并确认三个命令可用，然后跟随[你好，Riddle](./hello-riddle.md)创建第一个项目。
+先按[安装 Riddle 工具链](./install.md)完成安装并确认三个命令可用，然后跟随[你好，Riddle](./hello-riddle.md)创建第一个项目，最后在[创建与构建项目](./clue-create.md)中了解清单、入口文件、本地依赖和输出路径。
 
 完成后你应该能够：
 

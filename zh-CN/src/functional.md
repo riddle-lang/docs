@@ -1,6 +1,6 @@
 # 闭包与迭代器
 
-函数式能力在 Riddle 中表现为两类：匿名函数（闭包）让行为可以按值传递，`Iterator` / `IntoIterator` 协议让遍历可以统一。这两者都依赖泛型与 trait，因此本章放在[数据建模](./data-and-abstraction.md)之后阅读。
+函数式能力在 Riddle 中表现为两类：匿名函数（闭包）让行为可以按值传递，`Iterator` / `IntoIterator` 协议让遍历可以统一。这两者都依赖泛型与 trait，因此本章放在[泛型、Trait 与模块](./data-and-abstraction.md)之后阅读。
 
 ## 匿名函数
 
@@ -119,7 +119,7 @@ fun sum_to_three() -> i32 {
 
 标准库和语言为以下值直接提供了 `IntoIterator` 实现：
 
-- 固定长度数组 `[T; N]` 通过 `std::array::IntoIter<T, const N: usize>` 逐个按值产出元素，元素类型不需要实现 `Copy`，数组迭代器不要求元素是 Copy；
+- 固定长度数组 `[T; N]` 通过 `std::array::IntoIter<T>` 逐个按值产出元素，元素类型不需要实现 `Copy`；
 - `Vector<T>` 按值产出当前保存的元素并消耗向量；
 - 共享切片 `&[T]`、可变切片 `&mut [T]` 产出元素引用；
 - `&str` 按 UTF-8 解码产出 Unicode `char`。
@@ -136,7 +136,7 @@ fun use_array() -> i32 {
 }
 ```
 
-`[T; N]` 的迭代器定义为 `std::array::IntoIter<T, const N: usize>`，因此 `[1, 2, 3]` 匹配 `impl<T, const N: usize> IntoIterator for [T; N]`。
+`[T; N]` 的迭代器定义为 `std::array::IntoIter<T>`，因此 `[1, 2, 3]` 匹配 `impl<T, const N: usize> IntoIterator for [T; N]`。
 
 ## break 与 continue
 

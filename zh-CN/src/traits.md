@@ -86,7 +86,7 @@ impl Iterator for Counter {
 }
 ```
 
-`Iterator` 和 `IntoIterator` 是 `for item in value` 使用的协议。标准库把 `Option<T>` 放在 `std::option`、把 `Result<T, E>` 放在 `std::result`、把 `Range` 和 `range(start, end)` 放在 `std::ops`。与 Rust 一样，prelude 会重导出 `Some`、`None`、`Ok`、`Err`、`Copy`、`Clone` 和比较 trait，但不会自动导入 `Range` 或 `range`。固定长度数组 `[T; N]` 也已经有 `IntoIterator` 实现，数组迭代器定义为 `std::array::IntoIter<T, const N: usize>`，因此 `[1, 2, 3]` 会匹配 `impl<T, const N: usize> IntoIterator for [T; N]`，按值产出元素且不要求元素类型是 `Copy`。在 `for` 中使用这些类型的完整示例见[闭包与迭代器](./functional.md#内置可迭代值)。
+`Iterator` 和 `IntoIterator` 是 `for item in value` 使用的协议。标准库把 `Option<T>` 放在 `std::option`、把 `Result<T, E>` 放在 `std::result`、把 `Range` 和 `range(start, end)` 放在 `std::ops`。与 Rust 一样，prelude 会重导出 `Some`、`None`、`Ok`、`Err`、`Copy`、`Clone` 和比较 trait，但不会自动导入 `Range` 或 `range`。固定长度数组 `[T; N]` 也已经有 `IntoIterator` 实现，数组迭代器定义为 `std::array::IntoIter<T>`，因此 `[1, 2, 3]` 会匹配 `impl<T, const N: usize> IntoIterator for [T; N]`，按值产出元素且不要求元素类型是 `Copy`。在 `for` 中使用这些类型的完整示例见[闭包与迭代器](./functional.md#内置可迭代值)。
 
 ## 泛型约束
 
@@ -151,18 +151,16 @@ trait Copy {
 }
 ```
 
-基础类型（`i32`、`bool`、`f64` 等）在 std 中实现了 `std::marker::Copy`。你也可以为自己的类型实现它：
+基础类型（`i32`、`bool`、`f64` 等）在 std 中实现了 `std::marker::Copy`。用户类型通常直接使用标准派生：
 
 实现了 `Copy` 的类型在赋值后原变量仍然可用：
 
 ```riddle
+#[derive(Clone, Copy)]
 struct Point {
     x: i32,
     y: i32,
 }
-
-// Point 的字段都是 i32（Copy），可以安全实现 Copy
-impl std::marker::Copy for Point { }
 
 fun main() {
     let p = Point { x: 1, y: 2 };
@@ -224,6 +222,6 @@ fun main() -> i32 {
 
 `PartialEq::eq`、`PartialOrd::partial_cmp` 和 `Ord::cmp` 可以作为普通方法调用；整数、字符和布尔值返回 `Ordering`，浮点比较遇到 NaN 时返回 `None`。当前编译器会为用户类型把算术、取余、位运算、移位、一元负号、逻辑非、复合赋值和比较运算分派到对应的 `#[lang = "..."]` trait 方法，并用 `Output` 关联类型决定非赋值算术运算的结果类型。`==` 调用 `PartialEq::eq`，`!=` 调用默认的 `PartialEq::ne`；`<`、`<=`、`>`、`>=` 分别调用 `PartialOrd::lt`、`le`、`gt`、`ge`，这些默认方法通过 `partial_cmp` 判断，遇到 `None` 时均返回 `false`。
 
-标准库还提供普通 trait `Default`、`Hash`、`Display` 和 `Debug`。`Default::default()` 会根据期望类型静态选择 impl；`Hash` 用于哈希集合；`Display` / `Debug` 通过 `Formatter` 支持 `print!`、`println!` 与 `#[derive(Debug)]`。它们的日常用法见[常用标准库](./standard-library.md)。
+标准库还提供普通 trait `Default`、`Hash`、`Display` 和 `Debug`。`Default::default()` 会根据期望类型静态选择 impl；`Hash` 用于哈希集合；`Display` / `Debug` 通过 `Formatter` 支持 `print!`、`println!` 与 `#[derive(Debug)]`。编译器内置 `Debug`、`Clone`、`Copy`、`Default`、`Hash`、`PartialEq`、`Eq`、`PartialOrd` 和 `Ord` 派生；完整规则见[常用标准库](./standard-library.md#标准派生)。
 
 `Rem` 和 `RemAssign` 已为整数及 `f32` / `f64` 实现。C backend 对浮点余数生成 `fmod` 调用。

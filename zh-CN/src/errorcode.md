@@ -1,6 +1,6 @@
 # Riddle 错误码参考
 
-## 类型检查 (E0001–E0013, E0031–E0046, E0054–E0063, E0072, E0391)
+## 类型检查 (E0001–E0013, E0031–E0046, E0054–E0058, E0060–E0063, E0072, E0391)
 
 <a id="e0001"></a>
 ### E0001 — 类型不匹配
@@ -15,6 +15,7 @@ let x: i32 = "hello";  // E0001: expected i32, got &str
 ```riddle
 let x = if cond { 1 } else { "hello" };  // E0002: incompatible types: i32 and &str
 ```
+数组重复表达式 `[value; length]` 的长度必须是能适配 `usize` 的整数字面量，不满足时也报告本错误。
 
 <a id="e0003"></a>
 ### E0003 — 需要数值类型
@@ -37,6 +38,7 @@ x();  // E0004: cannot call value of type i32
 ```riddle
 add(1);  // E0005: function expects 2 arguments, got 1
 ```
+泛型调用无法从实参与期望返回类型推断类型参数时，也会报告本错误（`cannot infer type argument(s)`）。
 
 <a id="e0006"></a>
 ### E0006 — 未知字段
@@ -65,6 +67,7 @@ let x = *42;  // E0008: cannot dereference value of type i32
 ```riddle
 let x = UnknownType { a: 1 };  // E0009: struct literal does not resolve to a struct
 ```
+结构体字面量的类型参数数量错误、未知枚举变体，以及给非 struct 风格的枚举变体使用结构体字段时，也报告本错误。
 
 <a id="e0010"></a>
 ### E0010 — 模式不匹配
@@ -103,6 +106,7 @@ p.missing();  // E0013: unknown method `missing` on type Point
 let x = 1;
 x = 2;  // E0031: cannot assign to immutable binding
 ```
+不可变绑定或参数调用需要修改环境的闭包、数组重复表达式的值不是 `Copy`、以及通过共享引用或 `const` 指针修改值，也会报告本错误。
 
 <a id="e0032"></a>
 ### E0032 — 类型参数数量不匹配
@@ -159,6 +163,7 @@ let b = Box { value: Plain {} };  // E0035
 struct Point { x: i32 }
 let same = Point { x: 1 } == Point { x: 2 };  // E0036
 ```
+缺少 `Index` / `IndexMut` trait（例如 `--no-std` 场景下没有定义它们）时也报告本错误。
 
 <a id="e0037"></a>
 ### E0037 — impl where 子句违反 Paterson condition
@@ -210,7 +215,7 @@ trait Second: First {}
 ```riddle
 let id = fun(x) { x };  // E0045
 ```
-添加显式类型，例如 `fun(x: i32) { x }`。
+添加显式类型，例如 `fun(x: i32) { x }`。延迟初始化的 `let` 绑定在首次赋值前无法确定类型时，也报告本错误。
 
 <a id="e0046"></a>
 ### E0046 — 不安全操作需要 unsafe 上下文
@@ -236,6 +241,8 @@ fun call_contract() {
     unsafe { external_contract(); }
 }
 ```
+
+类型检查器检测到无限递归类型时也会使用本错误码（`cannot construct an infinite type`），它与 unsafe 上下文无关。
 
 <a id="e0054"></a>
 ### E0054 — 访问私有结构体字段或方法
@@ -282,15 +289,6 @@ let (value, value) = (1, 2);  // E0058
 ```
 
 <a id="e0059"></a>
-### E0059 — 使用未初始化的 `let` 绑定
-`let` 可以省略初始化式并稍后赋值，但在每条到达使用点的路径上都必须先完成赋值。编译器会合并 `if`、`match` 和循环的控制流；可能仍未初始化的读取会报告此错误。
-```riddle
-fun main() -> i32 {
-    let value: i32;
-    value // E0059
-}
-```
-
 <a id="e0060"></a>
 ### E0060 — 常量初始化式无效
 常量必须使用可在编译期检查的纯表达式，并且不能形成常量初始化循环。字面量、已检查常量引用、纯运算、转换和聚合值可以使用；函数调用、闭包、控制流或不安全操作会报告此错误。
@@ -408,6 +406,7 @@ impl Foo for Point {
     fun bar() { }  // E0028: parameter count mismatch
 }
 ```
+trait 方法与 impl 方法的 unsafe 安全性不一致（例如期望 `safe` 的 trait 方法用 `unsafe fun` 实现）时，也报告本错误。
 
 <a id="e0029"></a>
 ### E0029 — impl 方法参数类型不匹配
@@ -440,6 +439,8 @@ impl Foo for Point {}
 impl Foo for Point {}  // E0047: conflicting implementations
 ```
 
+`impl Fn*` 位置的格式错误也使用本错误码：目前只支持 `Fn`、`FnMut`、`FnOnce` 三种 callable bound，`impl Iterator` 这类非 callable 的 `impl Trait`、缺少 callable 签名或签名不合法的 bound 都会报告 `E0047`。
+
 <a id="e0048"></a>
 ### E0048 — impl 违反孤儿规则
 当前包只能实现自己定义的 trait，或为自己定义的名义类型实现外部 trait。实现外部 trait 时，`Self` 和 trait 类型参数中必须出现本地类型；在第一个本地类型之前不能出现未被类型构造器覆盖的泛型参数。引用会传递本地性，但不会覆盖其中的泛型参数。标注了 `#[fundamental]` 的类型是透明的：当其某个类型参数为本地类型时，整体也视为本地（与 `&T` 行为一致），因此可以为 `#[fundamental]` 外部类型包裹本地类型的形式实现外部 trait。
@@ -447,6 +448,7 @@ impl Foo for Point {}  // E0047: conflicting implementations
 use external::{Show, Point};
 impl Show for Point {}  // E0048
 ```
+callable 能力只能由函数和匿名函数实现，用户类型实现 `Fn*` 一类 callable trait 时也报告本错误。
 
 <a id="e0049"></a>
 ### E0049 — 默认 std 模式下使用内部属性
@@ -512,7 +514,17 @@ fun hello() -> i32 { 1 }  // E0064: `hello` is defined multiple times
 
 ---
 
-## 移动、逃逸和借用检查 (E0100, E0200, E0300–E0310)
+## 移动、逃逸和借用检查 (E0059, E0100, E0200, E0300–E0310)
+
+<a id="e0059"></a>
+### E0059 — 使用未初始化的 `let` 绑定
+`let` 可以省略初始化式并稍后赋值，但在每条到达使用点的路径上都必须先完成赋值。编译器会合并 `if`、`match` 和循环的控制流；可能仍未初始化的读取会报告此错误。
+```riddle
+fun main() -> i32 {
+    let value: i32;
+    value // E0059
+}
+```
 
 <a id="e0100"></a>
 ### E0100 — 使用了已移动的值
@@ -659,3 +671,11 @@ fun value(state: State) -> i32 {
 
 ### E0072 — 递归类型具有无限大小
 结构体或枚举直接或间接包含自身，没有任何间接层（引用、指针等），导致编译期无法计算类型大小。插入 `&`、`*const` 或 `*mut` 打破循环即可修复。
+
+---
+
+## 过程宏展开 (E0400)
+
+<a id="e0400"></a>
+### E0400 — 过程宏展开错误
+过程宏的导入和使用违反约定时由编译驱动报告，例如同一个宏被导入多次、`use` 树无法解析到宏等。过程宏包内部产生的其他诊断（如 `syn` 解析失败、`quote!` 重复长度不一致）会使用宏自己发出的错误信息，并映射回宏调用位置。

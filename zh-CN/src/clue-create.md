@@ -53,12 +53,7 @@ clue build hello
 clue build
 ```
 
-清单中的 `[[bin]].path` 或 `[lib].path` 是首选入口。对于没有显式目标的旧清单，`clue build` 会按顺序寻找入口文件：
-
-1. `src/main.rid`
-2. `src/lib.rid`
-3. `<package-name>.rid`
-4. `main.rid`
+清单中的 `[[bin]].path` 或 `[lib].path` 指定入口；`[package].entry` 的优先级更高，两者同时存在时以 `entry` 为准，路径相对项目根目录解析。没有显式目标时，`clue build` 按包类型寻找入口文件。二进制包依次检查 `src/main.rid`、`src/lib.rid`、`<package-name>.rid`、`main.rid`；库和过程宏包依次检查 `src/lib.rid`、`<package-name>.rid`、`lib.rid`、`src/main.rid`。
 
 旧清单也可以在 `[package]` 中指定入口文件：
 
@@ -164,4 +159,4 @@ clue run hello
 clue run hello -- arg1 arg2
 ```
 
-设置 `CC` 时 Clue 会严格使用指定的 C 编译器；否则自动探测系统中的 `cc`、`gcc`、`clang`、带版本后缀的 GCC/Clang，以及 Windows 上的 `clang-cl` 或 `cl`。只有能完成 C11 编译和链接的候选才会被采用。
+设置 `CC` 时 Clue 会严格使用指定的 C 编译器；否则先尝试目标组件 `c-toolchain.toml` 中配置的编译器（由 `ridup target configure` 设置），再探测 `clang`、`cc`、`gcc`（Windows 目标额外尝试 `clang-cl` 和 `cl`），最后尝试带版本后缀的 GCC/Clang。只有能完成 C11 编译和链接的候选才会被采用。

@@ -56,7 +56,7 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - 签名帮助（`textDocument/signatureHelp`）：显示函数或方法签名，并跟踪嵌套调用中的当前参数；
 - 声明、定义、类型定义与实现跳转（`textDocument/declaration`、`textDocument/definition`、`textDocument/typeDefinition`、`textDocument/implementation`）：支持局部绑定、模块项、字段、方法及跨文件符号，并把 trait 调用分别映射到 trait 声明和具体 impl；
 - 静态调用层级与类型层级：调用边覆盖编译器能够静态确定的自由函数、命名函数值、固有方法和 trait 方法声明；类型层级连接直接 supertrait、子 trait 及 `impl Trait for Type` 的实现类型；
-- 项目级引用、重命名、文档高亮、文档符号与工作区符号搜索，支持未打开模块和非文件 URI；
+- 项目级引用与重命名、文档高亮覆盖未打开模块和非文件 URI；文档符号与工作区符号搜索只覆盖已打开的文档；
 - 文档格式化与基于语法块的代码折叠；
 - Inlay Hint 同时提供推断的局部类型和可省略的调用参数名；
 - Code Action 可为可变闭包绑定补 `mut`，也可把不安全操作包入 `unsafe` 块；
@@ -209,16 +209,16 @@ match value {
 
 属性当前会进入 AST/HIR。编译器识别 `#[lang = "..."]`，用于把 trait 标记为编译器内置项。默认加载标准库时，该属性仅允许随编译器附加的标准库使用，用户包中出现会触发 E0049；使用 `--no-std` 时，参与编译的包可以为自定义 core 定义 lang item，编译器仍会检查名称、目标、固定签名和重复注册。
 
-Clue 支持 `#[proc_macro_derive(Name, attributes(...))]`、`#[proc_macro_attribute]` 和 `#[proc_macro]` 导出的 Riddle 过程宏。过程宏包由 `[lib] proc-macro = true` 标记并为宿主平台构建，也可以依赖并使用另一个过程宏包。宏可通过分组、别名、通配符或 `pub use` 导入独立的宏命名空间，混合 `use` 会保留普通名称；derive 只允许放在结构体或枚举上，Riddle 当前没有 union 条目。函数式宏使用 `name!()` 语法，可出现在表达式、条目、类型和模式位置。宏函数接收由 `Group`、`Ident`、`Punct` 和 `Literal` 组成的递归 `TokenStream`；输入、输出、诊断和 span 通过带版本的长度前缀结构化协议传递，输出 token 直接进入解析器。复制到输出的 token 会保留源位置，生成代码中的宏会继续展开，最大深度为 32。LSP 同步支持宏高亮、悬停、定义、引用、别名重命名和补全。
+Clue 支持 `#[proc_macro_derive(Name, attributes(...))]`、`#[proc_macro_attribute]` 和 `#[proc_macro]` 导出的 Riddle 过程宏。过程宏包由 `[lib] proc-macro = true` 标记并为宿主平台构建，也可以依赖并使用另一个过程宏包。宏可通过分组、别名、通配符或 `pub use` 导入独立的宏命名空间，混合 `use` 会保留普通名称；derive 只允许放在结构体或枚举上，Riddle 当前没有 union 条目。函数式宏使用 `name!()` 语法，可出现在表达式、条目、类型和模式位置。宏函数接收由 `Group`、`Ident`、`Punct` 和 `Literal` 组成的递归 `TokenStream`；输入、输出、诊断和 span 通过带版本的长度前缀结构化协议传递，输出 token 直接进入解析器。复制到输出的 token 会保留源位置，生成代码中的宏会继续展开，最大深度为 32。过程宏包内置 `syn` 和 `quote!`：`syn` 提供结构化 `DeriveInput`、Riddle 语法分类、`Parse`、`ToTokens`、`Visit` 与 `Fold`，`quote!` 支持插值、重复和等长向量配对。LSP 同步支持宏高亮、悬停、定义、引用、别名重命名和补全。
 
 当前标准库会自动拼到用户源码后面，根部通过 prelude 重导出常用项，同时按 Rust 风格分模块定义：
 
-prelude 只直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`、`Ok`、`Err`、`Copy`、`Clone`、`Drop`、`drop`、`Default`、`Into`、`panic`、比较 trait 和迭代协议。集合、格式化 trait、具体迭代器、区间、解析、时间及底层输出函数需要从各自模块显式导入；标准宏命名空间隐式提供 `#[derive(Debug)]`、`print!` 和 `println!`。
+prelude 只直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`、`Ok`、`Err`、`Copy`、`Clone`、`Drop`、`drop`、`Default`、`Into`、`panic`、比较 trait 和迭代协议。集合、格式化 trait、具体迭代器、区间、解析、时间及底层输出函数需要从各自模块显式导入；标准宏命名空间隐式提供 `Debug`、`Clone`、`Copy`、`Default`、`Hash`、`PartialEq`、`Eq`、`PartialOrd`、`Ord` 派生以及 `format!`、`print!` 和 `println!`。
 
 - `std::option::Option<T>`，提供 `is_some`、`is_none`、`unwrap_or` 和 `or`；
 - `std::result::Result<T, E>`，提供 `is_ok`、`is_err`、`unwrap_or`、`ok` 和 `err`；
-- `print!` / `println!` 通过 `std::io::{print, println, print_debug}` 和 `std::fmt::{Debug, Display, Formatter, Result}` 支持字符串、布尔、字符、整数和浮点标量；格式化 trait 和底层输出函数不在 prelude 中。`Debug` 与 `Display` 都使用 `fmt(&self, formatter: &mut Formatter) -> Result`，字符串和字符的 `Debug` 输出会添加引号并转义；标准 `#[derive(Debug)]` 支持结构体、泛型结构体以及 unit、tuple、named 三类枚举变体，`Option`、`Result`、`String`、`Vector`、`HashMap`、`HashSet`、`TreeMap` 和 `TreeSet` 均通过该派生实现 `Debug`，泛型元素必须实现 `Debug`；格式宏支持空调用、字符串字面量、多个 `{}` / `{:?}` 参数、尾随逗号以及 `{{` / `}}`，并按从左到右的顺序分别通过 `Display` / `Debug` 输出；索引参数、命名参数和其他格式说明符尚未实现；
-- `std::string::String` 提供 `new`、`from_str`、`as_str`、`len`、`capacity`、`is_empty`、`push_str` 和 `clear`；同一模块按 Rust 风格为 `str` 提供 `len`、`is_empty`、`as_bytes` 和按 Unicode `char` 遍历的 `StrIter`；
+- `print!` / `println!` 通过 `std::io::{print, println, print_debug}` 和 `std::fmt::{Debug, Display, Formatter, Result}` 支持字符串、布尔、字符、整数和浮点标量；格式化 trait 和底层输出函数不在 prelude 中。`Debug` 与 `Display` 都使用 `fmt(&self, formatter: &mut Formatter) -> Result`，字符串和字符的 `Debug` 输出会添加引号并转义；标准派生支持结构体、泛型结构体以及 unit、tuple、named 三类枚举变体，当前包括 `Debug`、`Clone`、`Copy`、`Default`、`Hash`、`PartialEq`、`Eq`、`PartialOrd` 和 `Ord`，并为泛型参数生成相应 bound；枚举 `Default` 要求恰好一个带 `#[default]` 的 unit 变体，排序派生按变体声明顺序和 payload 字典序工作；`Copy` impl 会验证所有字段和 payload，比较派生仍需满足父 trait；`Option`、`Result`、`String`、`Vector`、`HashMap`、`HashSet`、`TreeMap` 和 `TreeSet` 均通过 `Debug` 派生实现格式化；`print!` / `println!` 支持空调用、字符串字面量、多个 `{}` / `{:?}` 参数、尾随逗号以及 `{{` / `}}`，`format!` 要求字符串字面量并返回 `String`；三者都按从左到右的顺序分别通过 `Display` / `Debug` 输出；索引参数、命名参数和其他格式说明符尚未实现；
+- `std::string::String` 提供 `new`、`from_str`、`as_str`、`len`、`capacity`、`is_empty`、`push_str`、`push_char` 和 `clear`；同一模块按 Rust 风格为 `str` 提供 `len`、`is_empty`、`as_bytes` 和按 Unicode `char` 遍历的 `StrIter`；
 - `std::vector::Vector<T>` 提供 `new`、`len`、`capacity`、`is_empty`、`push`、`pop`、`get`、`get_mut`、`swap`、`clear`、`as_slice`、读写下标和按值迭代；下标越界调用 `panic`，缓冲区通过运行时 `rgc_realloc`、`rgc_free` 管理；
 - `Vector<T>` 会拒绝零大小元素并检查容量乘法溢出；原始指针目前不能比较空值，因此尚不能在标准库内处理 C 分配失败；
 - `std::iter::{Iterator, IntoIterator}`；
@@ -279,8 +279,8 @@ prelude 只直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`No
 - `&str` 是 `{ ptr, len }` 胖指针，字符串字面量的类型也是 `&str`；
 - 字符串字面量支持 `"..."`、`r"..."`、`r#"..."#` 和 `r###"..."###`；
 - `extern "C"` 支持声明块和带函数体的导出定义；
-- C 导入中的 `&str` 映射为 `const char*`，显式 `#[c_export]` 包装函数也使用该参数 ABI；边界另一侧必须提供 NUL 终止的数据，需要保留长度时应显式传递指针和 `usize`；带函数体的既有 `extern "C"` 定义和普通 Riddle 函数仍使用 `{ ptr, len }`；
-- C backend 不按函数名提供任何内置 C helper，所有 `extern "C"` 声明都按普通外部符号生成；
+- C 导入中的 `&str` 映射为 `const char*`，调用点会复制并补齐 NUL，临时指针只在调用期间有效且输入不能含嵌入 NUL；显式 `#[c_export]` 包装函数也使用该参数 ABI，边界另一侧必须提供 NUL 终止的数据；需要保留长度时应显式传递指针和 `usize`；带函数体的既有 `extern "C"` 定义和普通 Riddle 函数仍使用 `{ ptr, len }`；
+- C backend 只会在实际调用 C 字符串导入时生成内部的 NUL 终止桥接 helper；除此之外不按函数名提供内置 C helper，所有 `extern "C"` 声明都按普通外部符号生成；
 - 标准库通过 `as_bytes().len()` 实现 `str::len`，并用受限的同布局转换实现 `&str` / `&[u8]` 转换；`String::as_str` 先借用 `Vector<u8>` 为 `&[u8]`，再通过普通标准库 unsafe 函数转换为 `&str`，不使用函数 builtin，也不生成或链接 C helper；
 - `String` 以 `Vector<u8>` 持有 UTF-8 字节，支持追加、清空和借用为 `&str`；存活的 `as_str()` 视图会阻止可能使其失效的可变操作。
 

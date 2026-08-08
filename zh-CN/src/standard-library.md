@@ -10,9 +10,11 @@ Riddle 会自动加载随编译器附带的标准库。prelude 提供日常使�
 
 - `Option`、`Result`、`Some`、`None`、`Ok`、`Err`；
 - `String`、`Vector`；
-- `Copy`、`Clone`、`Drop`、`Default`、`Into` 和比较 trait；
-- `drop`、`panic`、`print!`、`println!` 与标准 `#[derive(Debug)]`；
+- `Copy`、`Clone`、`Drop`、`Default`、`Into`、`drop`、`panic` 和比较 trait；
+- 标准 `Debug`、`Clone`、`Copy`、`Default`、`Hash`、`PartialEq`、`Eq`、`PartialOrd`、`Ord` 派生；
 - `Iterator` 与 `IntoIterator` 协议。
+
+`print!` 与 `println!` 不是 prelude 条目，而是编译器直接提供的内置宏，不需要导入即可使用。
 
 同名并不表示与 Rust 标准库具有完整相同的 API。应以本页和[当前工具链状态](./compiler-status.md)列出的实现为准。
 
@@ -37,6 +39,23 @@ fun main() {
 格式宏当前支持多个 `{}` / `{:?}`、尾随逗号以及 `{{` / `}}`。索引参数、命名参数和其他格式说明符尚未实现。
 
 `print!` / `println!` 通过 `std::io::{print, println, print_debug}` 和 `std::fmt::{Debug, Display, Formatter, Result}` 支持字符串、布尔、字符、整数和浮点标量；`Display` 输出 UTF-8 字符，浮点数固定输出 6 位小数。字符串和字符的 `Debug` 输出会添加引号并转义 `\\`、`\"`、`\n`、`\r`、`\t`、`\0`。格式化 trait 和底层输出函数不在 prelude 中。
+
+## 标准派生
+
+编译器内置 `Debug`、`Clone`、`Copy`、`Default`、`Hash`、`PartialEq`、`Eq`、`PartialOrd` 和 `Ord` 派生，可用于结构体和 unit、tuple、named 三类枚举变体。`Clone`、`Default`、`Hash` 和比较派生按字段声明顺序工作；`PartialEq` 在枚举变体不同时返回 `false`；`PartialOrd` / `Ord` 先比较枚举变体声明顺序，再按 payload 做字典序比较，`PartialOrd` 会原样传播字段返回的 `None`；`Copy` 和 `Eq` 生成标记 impl。泛型类型参数会自动获得相应 trait bound，例如 `Wrapper<T>` 的 `Clone` impl 要求 `T: Clone`。
+
+结构体的 `Default` 会逐字段调用 `Default::default()`。枚举必须用 `#[default]` 标记恰好一个 unit 变体：
+
+```riddle
+#[derive(Default, PartialEq, Eq, PartialOrd, Ord)]
+enum State {
+    #[default]
+    Idle,
+    Running(i32),
+}
+```
+
+`Copy` 派生仍会经过字段和枚举 payload 校验。比较 trait 保持标准库的父 trait 关系，因此通常按 `PartialEq, Eq, PartialOrd, Ord` 一起派生；只派生 `Eq`、`PartialOrd` 或 `Ord` 而没有所需的父 trait impl 会产生类型错误。
 
 ## 解析与时间
 

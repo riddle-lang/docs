@@ -57,30 +57,7 @@ fun make_foo(x: i32, y: i32) -> Foo {
 
 ## 泛型结构体
 
-结构体可以带类型参数：
-
-```riddle
-struct Box<T> {
-    value: T,
-}
-
-fun main() -> i32 {
-    let b: Box<i32> = Box { value: 1 };
-    b.value
-}
-```
-
-类型参数可以嵌套使用，`>` 之间不需要空格：
-
-```riddle
-let b: Box<Box<i32>> = Box { value: Box { value: 1 } };
-```
-
-也可以在结构体字面量中用 `::<>` 显式指定类型参数，这在无法从上下文推断时很有用：
-
-```riddle
-let b = Box::<i32> { value: 1 };
-```
+结构体可以带类型参数和 const 参数，规则见[泛型](./generics.md)一章。
 
 ## 关联函数
 

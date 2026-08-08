@@ -76,78 +76,7 @@ fun abs(x: i32) -> i32 {
 
 ## 泛型函数
 
-函数可以带类型参数，让同一份逻辑适用于多种类型：
-
-```riddle
-fun id<T>(value: T) -> T {
-    value
-}
-
-fun main() {
-    let n = id(1);       // T 推断为 i32
-    let b = id(true);    // T 推断为 bool
-}
-```
-
-多个类型参数用逗号分隔：
-
-```riddle
-fun pair<A, B>(first: A, second: B) -> (A, B) {
-    (first, second)
-}
-```
-
-类型参数可以带 trait bound：
-
-```riddle
-fun copy_id<T: std::marker::Copy>(value: T) -> T {
-    value
-}
-```
-
-多个 bound 用 `+` 连接，例如 `<T: Named + Tagged>`。bound 也可以约束关联类型，例如 `<T: std::ops::Add<Output = T>>`。
-
-也可以把约束写成 `where` 子句：
-
-```riddle
-fun read<T>(value: T) -> i32
-where T: Named
-{
-    value.name()
-}
-```
-
-调用泛型函数或方法时，编译器会联合全部实参与调用位置的期望返回类型推断类型参数，实参的书写顺序不影响推导；也可以在函数名后用 Rust 风格的 `::<...>` 显式指定：
-
-```riddle
-fun main() {
-    let n = id::<i32>(1);   // 显式指定 T = i32
-    let b = id::<bool>(true);
-}
-```
-
-方法的显式类型实参使用相同语法，例如 `value.convert::<Target>()`。调用泛型类型上的关联函数时，类型实参写在类型路径段上：
-
-```riddle
-let values = Vector::<i32>::new();
-let converted = Wrapper::<i32>::convert::<bool>();
-```
-
-这里第一组参数选择 `impl<T>` 的 `T`，末尾一组参数选择关联函数自己的泛型参数。类型标注中仍然写作 `Vector<T>`，不需要 `::`。
-
-编译器会检查推断或显式给出的实参类型是否满足 bound；函数体内可以通过 bound 调用 trait 方法，C backend 会在单态化后静态分派到具体 impl。
-
-函数也支持 const 泛型参数。当前常见用法是把数组长度作为编译期参数：
-
-```riddle
-fun len<const N: usize>(values: [i32; N]) -> i32 {
-    0
-}
-
-fun main() {
-    let n = len([1, 2, 3]); // N 推断为 3
-}
-```
+泛型函数的类型参数、推断、显式实参和 const 泛型见[泛型](./generics.md)一章。
 
 ## 可调用参数与返回值
 

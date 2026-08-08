@@ -49,7 +49,7 @@ use_tree =
 // == items ==
 
 enum_decl = "pub"? "enum" ident item_generic_params? where_clause? "{" (enum_variant ("," enum_variant)* ","?)? "}";
-enum_variant = attribute* ident ("(" type_list? ")")? ("{" struct_field_list? "}")?;
+enum_variant = attribute* ident (("(" type_list? ")") | ("{" struct_field_list? "}"))?;
 
 trait_decl = "pub"? "trait" ident trait_generic_params? (":" generic_bound ("+" generic_bound)*)? "{" trait_item* "}";
 trait_item = attribute* (func_decl | assoc_type_decl);
@@ -109,7 +109,7 @@ if_expr = "if" expression block ("else" (if_expr | block))?;
 
 while_expr = "while" expression block;
 
-for_expr = "for" pattern "in" expression block;
+for_expr = "for" ident "in" expression block;
 
 match_expr = "match" expression "{" match_arm ("," match_arm)* ","? "}";
 match_arm = attribute* pattern ("if" expression)? "=>" expression;
@@ -127,7 +127,7 @@ postfix = primary ( "::" "<" type_arg_list ">" "(" arg_list ")" | "(" arg_list "
 
 arg_list = (expression ("," expression)*)?;
 
-type_arg_list = ty ("," ty)*;
+type_arg_list = type_list;
 
 primary = literal | macro_call | path | array_expr | tuple_expr | lambda_expr | "(" expression? ")";
 
@@ -171,7 +171,7 @@ enum_pattern = path | path "(" (pattern ("," pattern)* ","?)? ")" | path "{" (fi
 //   +  -           left-assoc        (lbp=10, rbp=11)
 //   & | ^ << >>    left-assoc        (lbp=9,  rbp=10)
 //   <  >  <=  >=   left-assoc        (lbp=8,  rbp=9)
-//   ==  !=         left-assoc        (lbp=5,  rbp=6)
+//   ==  !=         left-assoc        (lbp=6,  rbp=7)
 //   &&             left-assoc        (lbp=4,  rbp=5)
 //   ||             left-assoc        (lbp=2,  rbp=3)
 //
@@ -200,7 +200,7 @@ impl_callable_type = "impl" callable_bound;
 
 // == operators ==
 
-prefix_op = "+" | "-" | "&" ("mut")? | "&&" ("mut")? | "*" | "!";
+prefix_op = "+" | "-" | "&" ("mut")? | "&&" | "*" | "!";
 
 binop = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^=" | "<<=" | ">>="
       | "||" | "&&" | "==" | "!=" | "<" | ">" | "<=" | ">="
@@ -226,3 +226,5 @@ ident = [a-zA-Z_][a-zA-Z0-9_]*;
 词法层接受 `i128`、`u128`、`f16`、`f128` 字面量后缀，但类型系统只支持 8 到 64 位整数与 `f32` / `f64`；使用不支持的尾缀会报告 `E0011`。整数字面量不支持十六进制、八进制、二进制或 `_` 分隔符写法。
 
 `let` 可以在声明处初始化，也可以省略初始化式并稍后赋值：`let pattern = expression;`、`let pattern: Type;` 和可由首次赋值推断类型的 `let pattern;` 都是合法语法。延迟初始化的绑定必须在每条到达使用点的路径上先完成赋值；否则会报告 `E0059`。引用解构依赖初始化式的值类别，因此不能用于延迟初始化声明。`type Name;` 只用于 trait 中声明关联类型；模块和 `impl` 中的类型别名需要写出 `= Type`。
+
+`::<...>` 类型实参在类型位置可以直接书写；作为表达式时，只有后面紧跟 `(`（调用）或 `{`（结构体字面量）才会被解析，`Foo::<i32>` 这样的裸 turbofish 表达式会被拒绝。

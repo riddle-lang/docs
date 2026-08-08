@@ -61,16 +61,16 @@ cc hello.c crates/gc/src/runtime.c -o hello
 | `isize` / `usize` | `ptrdiff_t` / `size_t` |
 | `bool` | `bool` |
 | `char` | `uint32_t` |
-| `()` | `void` |
+| `()` | 返回位置为 `void`；值位置（参数、字段等）使用 `riddle_unit`（`unsigned char`） |
 | `&T`（定长类型） | `T*` |
-| `*const T` / `*mut T` | `T*` |
+| `*const T` / `*mut T` | 内部值为 `T*`；`extern "C"` 声明中统一映射为 `void*` |
 | `[T; N]` | C 数组；零长度数组使用严格 C11 兼容的占位存储 |
 | `enum` | 带 tag 和 payload 字段的 C `struct` |
 | callable（内部） | `{ call, env, drop }`，调用与析构接收隐藏环境参数 |
 | `&[T]`（内部） | 携带指针与长度的切片结构 |
 | `&str`（Riddle 内部） | `riddle_str { ptr, len }` |
 
-切片不能作为单个 C extern 参数传递，应显式拆成指针和长度。`&str` 在导入与导出边界上的特殊规则见下一节。
+`extern "C"` 声明中的指针参数和返回值按 `void*` 映射，调用点会自动插入兼容的指针转换；内部值才保留具体的 `T*`。切片不能作为单个 C extern 参数传递，应显式拆成指针和长度。`&str` 在导入与导出边界上的特殊规则见下一节。
 
 ## extern "C"
 
@@ -102,7 +102,7 @@ extern "C" fun add(x: i32, y: i32) -> i32 {
 }
 ```
 
-字符串 FFI 不接受裸 `str` 参数或返回值。`&str` 在 Riddle 内部是胖指针；调用只有声明、没有函数体的 C 导入时，C backend 会把参数的 `ptr` 作为 `const char*` 传出。若导入返回 `&str`，返回指针必须以 NUL 结尾，长度由 `strlen` 恢复。
+字符串 FFI 不接受裸 `str` 参数或返回值。`&str` 在 Riddle 内部是胖指针；调用只有声明、没有函数体的 C 导入时，C backend 会复制参数的字节到临时缓冲区并补一个尾部 NUL，再以 `const char*` 传出；临时指针只在本次调用期间有效，参数中不能含嵌入的 NUL。若导入返回 `&str`，返回指针必须以 NUL 结尾，长度由 `strlen` 恢复。
 
 ```riddle
 unsafe extern "C" {

@@ -59,41 +59,7 @@ impl Point {
 
 ## 泛型 impl
 
-泛型类型可以写泛型 impl：
-
-```riddle
-struct Box<T> {
-    value: T,
-}
-
-impl<T> Box<T> {
-    fun get(&self) -> T {
-        self.value
-    }
-}
-
-fun main() -> i32 {
-    let b: Box<i32> = Box { value: 1 };
-    b.get()
-}
-```
-
-当前 C backend 会为用到的泛型方法生成单态化函数。
-
-泛型 impl 也可以带 const 参数：
-
-```riddle
-struct ArrayIter<T, const N: usize> {
-    values: [T; N],
-    index: usize,
-}
-
-impl<T, const N: usize> ArrayIter<T, N> {
-    fun len(&self) -> usize {
-        N
-    }
-}
-```
+泛型 impl 与 const 参数的规则见[泛型](./generics.md)一章。
 
 ## Trait impl
 

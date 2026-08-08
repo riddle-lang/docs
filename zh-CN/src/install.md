@@ -73,7 +73,7 @@ Clippy 唯一排除的规则是 `multiple_crate_versions`。当前 Cargo 依赖�
 当前命令行入口是 `riddlec`：
 
 ```bash
-riddlec [--verbose] [--backend c] [--target <triple>] [--output <file>] <file>...
+riddlec [--verbose] [--no-std] [--backend c] [--target <triple>] [--output <file>] <file>...
 ```
 
 例如，创建一个项目，再把入口文件通过 C backend 生成 C 源码：
@@ -121,4 +121,4 @@ rustup update stable
 
 仓库不单独维护 `examples/` 目录。可以使用 `clue new` 创建最小项目；其他语言能力以本书中的可运行代码片段和测试为准。
 
-不过示例可能会跟随语言设计快速变化。学习 Riddle 的主要概念时，请按目录继续阅读“Riddle 基础”“所有权与内存”和“数据建模与抽象”。
+不过示例可能会跟随语言设计快速变化。学习 Riddle 的主要概念时，请按目录继续阅读“通用编程概念”“所有权与内存”和“结构体与枚举”。

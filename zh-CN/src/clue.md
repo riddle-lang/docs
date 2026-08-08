@@ -12,7 +12,7 @@ clue run [path] [--target <triple>] [-- <args>...]
 
 `clue init` 在指定目录中初始化项目，`clue new` 创建新目录和项目；二者都会生成清单、入口源码和忽略文件。它们不会覆盖已有的 `Clue.toml` 或目标入口源码。`clue check` 检查整个项目但不生成 C，`clue build` 构建项目，`clue run` 先构建二进制项目再运行生成的程序。
 
-二进制项目会保留 `.clue/build/<package-name>.c` 和默认的 `<package-name>.runtime.c`，并在同一目录生成 `<package-name>`；Windows 下扩展名为 `.exe`。设置 `CC` 时 Clue 会严格使用它，失败时不会静默回退；未设置时会探测 `cc`、`gcc`、`clang`、带版本后缀的 GCC/Clang，Windows 还会探测 `clang-cl` 和 `cl`。候选必须能够完成一次 C11 编译和链接。库项目仍只生成 C 源码，不会选择或链接运行时。
+二进制项目会保留 `.clue/build/<package-name>.c` 和默认的 `<package-name>.runtime.c`，并在同一目录生成 `<package-name>`；Windows 下扩展名为 `.exe`。设置 `CC` 时 Clue 会严格使用它，失败时不会静默回退；未设置时，会先尝试目标组件 `c-toolchain.toml` 中配置的编译器（由 `ridup target configure` 设置），再按候选顺序探测：Linux/macOS 目标依次尝试 `clang`、`cc`、`gcc`；Windows 目标依次尝试 `clang-cl`、`clang`、`cc`、`gcc`、`cl`（非 Windows 宿主上的交叉目标会把 `clang-cl` 放到最后），最后追加带版本后缀的 GCC/Clang。候选必须能够完成一次 C11 编译和链接。库项目仍只生成 C 源码，不会选择或链接运行时。
 
 ## 目标平台
 
@@ -61,12 +61,7 @@ path = "src/main.rid"
 [dependencies]
 ```
 
-库项目使用 `[lib]` 和 `src/lib.rid`。如果清单没有显式目标，`clue build` 会按顺序寻找入口：
-
-1. `src/main.rid`
-2. `src/lib.rid`
-3. `<package-name>.rid`
-4. `main.rid`
+库项目使用 `[lib]` 和 `src/lib.rid`。如果清单没有显式目标，`clue build` 会按包类型寻找入口。二进制包依次检查 `src/main.rid`、`src/lib.rid`、`<package-name>.rid`、`main.rid`；库和过程宏包依次检查 `src/lib.rid`、`<package-name>.rid`、`lib.rid`、`src/main.rid`。
 
 旧项目仍可以在 `[package]` 中使用 `entry` 指定入口：
 
@@ -76,6 +71,8 @@ name = "hello"
 entry = "src/bin/hello.rid"
 version = "0.1.0"
 ```
+
+`entry` 的优先级高于 `[[bin]].path` / `[lib].path`：两者同时存在时以 `entry` 为准，路径相对项目根目录解析。
 
 ## 运行时与分配器
 
@@ -191,6 +188,30 @@ for tree in &input {
 
 `TokenStream::from_str` 会执行词法分析，失败时返回 `LexError`，并把新 token 的位置设为当前宏调用点；`to_string()` 则提供源码文本视图。空白和注释不属于 token，因此不会逐字保留。`TokenStream::clone()` 共享底层 token，首次修改时才复制。Clue 与宏宿主之间传递结构化 token tree，编译器也直接把输出 token 送回解析器，不会把整个展开结果重新做一次词法分析。
 
+过程宏包还会自动获得内置 `syn` 模块和 `quote!`，不需要在 `Clue.toml` 中添加依赖。
+`syn` 可以把输入解析为 `DeriveInput`、`Item`、`Stmt`、`Expr`、`Type` 或 `Pat`，
+`quote!` 则通过 `#name` 插入实现了 `ToTokens` 的值：
+
+```riddle
+use syn::{DeriveInput, parse};
+
+#[proc_macro_derive(Answer)]
+pub fun derive_answer(input: TokenStream) -> TokenStream {
+    let parsed = match parse::<DeriveInput>(input) {
+        Result::Ok(value) => value,
+        Result::Err(error) => {
+            error.emit();
+            return TokenStream::new();
+        },
+    };
+    let generated = Ident::new("generated_answer", parsed.ident.span());
+    quote! { fun #generated() -> i32 { 42 } }
+}
+```
+
+结构化 derive 输入、通用语法节点、自定义 `Parse`、`Visit`、`Fold` 和
+`quote!` 重复语法见[内置 `syn` 与 `quote!`](./syn.md)。
+
 使用方把宏包声明为本地 path 依赖，再把 derive 宏导入独立的宏命名空间：
 
 ```toml
@@ -218,7 +239,7 @@ union 条目。`pub use` 可以在模块中重导出过程宏，混合导入会�
 函数式宏可用于表达式、条目、类型和模式位置。`attributes(answer)` 注册的 helper 属性只在
 对应 derive 的输入条目、枚举变体和字段上有效，未注册的 helper 属性会在调用宏之前报错。
 
-Clue 会把过程宏包编译为宿主平台进程，而不会把它拼入目标程序。一次分析中的调用复用同一个进程；derive 和属性宏输出必须是顶层条目，函数式宏输出必须适合调用位置。宏诊断会使用传入的 `Span`，复制到输出的 token 也会把后续编译错误映回原位置；使用 `Span::call_site()` 创建的 token 和诊断则指向宏调用。生成代码中的宏会继续展开，最大深度为 32。过程宏包可以通过本地 path 依赖使用另一个过程宏包，`clue check` 也能直接检查过程宏包自身。LSP 会识别宏导入和调用，并提供分类高亮、悬停、定义跳转、引用、别名重命名和按宏种类过滤的补全。
+Clue 会把过程宏包编译为宿主平台进程，而不会把它拼入目标程序。每次宏调用都在独立宿主进程中运行，单次调用最多运行 10 秒，输入和输出各受 16 MiB 上限保护；宿主崩溃不会直接带崩 Clue。derive 和属性宏输出必须是顶层条目，函数式宏输出必须适合调用位置。宏诊断会使用传入的 `Span`，复制到输出的 token 也会把后续编译错误映回原位置；使用 `Span::call_site()` 创建的 token 和诊断则指向宏调用。生成代码中的宏会继续展开，最大深度为 32。过程宏包可以通过本地 path 依赖使用另一个过程宏包，`clue check` 也能直接检查过程宏包自身。LSP 会识别宏导入和调用，并提供分类高亮、悬停、定义跳转、引用、别名重命名和按宏种类过滤的补全。
 
 模块、`use`、`pub use` 和可见性规则见[模块、use 与包](./modules.md)。
 
