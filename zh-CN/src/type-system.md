@@ -48,15 +48,15 @@ let letter = 65u8 as char;    // 'A'
 
 ### Never 类型
 
-`!` 表示表达式永远不会正常产生值。标准库的 `panic(message)` 返回 `!`，所以可以出现在需要其他结果类型的分支：
+`!` 表示表达式永远不会正常产生值。标准宏 `panic!(...)`、`todo!(...)`、`unimplemented!(...)` 和 `unreachable!(...)` 返回 `!`，所以可以出现在需要其他结果类型的分支：
 
 ```riddle
 fun require(valid: bool) -> i32 {
-    if valid { 42 } else { panic("invalid state") }
+    if valid { 42 } else { panic!("invalid state: {}", valid) }
 }
 ```
 
-当前 `panic` 直接调用 C `abort()`，不会输出消息。可恢复失败应使用 `Option` 或 `Result`，详见[错误处理](./error-handling.md)。
+当前 panic 运行时会输出源位置和消息，然后调用 C `abort()`；它不会进行栈展开或恢复。可恢复失败应使用 `Option` 或 `Result`，详见[错误处理](./error-handling.md)。
 
 ## 元组
 

@@ -10,11 +10,11 @@ Riddle 会自动加载随编译器附带的标准库。prelude 提供日常使�
 
 - `Option`、`Result`、`Some`、`None`、`Ok`、`Err`；
 - `String`、`Vector`；
-- `Copy`、`Clone`、`Drop`、`Default`、`Into`、`drop`、`panic` 和比较 trait；
+- `Copy`、`Clone`、`Drop`、`Default`、`Into`、`drop` 和比较 trait；
 - 标准 `Debug`、`Clone`、`Copy`、`Default`、`Hash`、`PartialEq`、`Eq`、`PartialOrd`、`Ord` 派生；
 - `Iterator` 与 `IntoIterator` 协议。
 
-`print!` 与 `println!` 不是 prelude 条目，而是编译器直接提供的内置宏，不需要导入即可使用。
+函数式标准宏不属于 prelude，也不需要导入。当前包括 `format!`、`panic!`、`print!`、`println!`，断言宏 `assert!`、`assert_eq!`、`assert_ne!`、`debug_assert!`、`debug_assert_eq!`、`debug_assert_ne!`，以及 `todo!`、`unimplemented!` 和 `unreachable!`。
 
 同名并不表示与 Rust 标准库具有完整相同的 API。应以本页和[当前工具链状态](./compiler-status.md)列出的实现为准。
 
@@ -39,6 +39,10 @@ fun main() {
 格式宏当前支持多个 `{}` / `{:?}`、尾随逗号以及 `{{` / `}}`。索引参数、命名参数和其他格式说明符尚未实现。
 
 `print!` / `println!` 通过隐藏的标准库输出入口和 `std::fmt::{Debug, Display, Formatter, Result}` 支持字符串、布尔、字符、整数和浮点标量；`Display` 输出 UTF-8 字符，浮点数固定输出 6 位小数。字符串和字符的 `Debug` 输出会添加引号并转义 `\\`、`\"`、`\n`、`\r`、`\t`、`\0`。格式化 trait 不在 prelude 中，底层输出入口不属于用户 API。
+
+`panic!()` 使用消息 `explicit panic`；`panic!("value={}", value)` 与其他格式宏共享编译期格式串检查，并保留宏调用位置用于 panic 诊断。底层 `std::panic` 模块及其 `panic(message)` 入口仅供标准库和编译器使用，不会进入普通补全。
+
+`assert_eq!` / `assert_ne!` 只求值左右表达式一次，失败时显示两侧的 `Debug` 值；所有断言宏都支持自定义格式化消息。`todo!`、`unimplemented!` 和 `unreachable!` 返回 `!` 并产生对应的 panic 消息。Riddle 当前没有按构建配置关闭 debug assertion 的能力，因此 `debug_assert!`、`debug_assert_eq!` 和 `debug_assert_ne!` 始终执行。
 
 ## 标准派生
 
