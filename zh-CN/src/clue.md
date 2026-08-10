@@ -3,11 +3,11 @@
 `clue` 是 Riddle 当前的项目构建器。它提供五个命令：
 
 ```bash
-clue init [--bin|--lib] <path>
-clue new [--bin|--lib] <path>
-clue check [path] [--target <triple>]
-clue build [path] [--target <triple>]
-clue run [path] [--target <triple>] [-- <args>...]
+clue init [--bin|--lib|--workspace] <path>
+clue new [--bin|--lib|--workspace] <path>
+clue check [path] [--package <name>] [--workspace] [--target <triple>]
+clue build [path] [--package <name>] [--workspace] [--target <triple>]
+clue run [path] [--package <name>] [--target <triple>] [-- <args>...]
 ```
 
 `clue init` 在指定目录中初始化项目，`clue new` 创建新目录和项目；二者都会生成清单、入口源码和忽略文件。它们不会覆盖已有的 `Clue.toml` 或目标入口源码。`clue check` 检查整个项目但不生成 C，`clue build` 构建项目，`clue run` 先构建二进制项目再运行生成的程序。
@@ -134,6 +134,19 @@ fun main() -> i32 {
 
 作为依赖加载时，Clue 会优先使用 `[lib].path`；没有 `[lib]` 目标时，再依次寻找 `src/lib.rid`、`<package-name>.rid`、`lib.rid` 和 `src/main.rid`。依赖包需要用 `pub` 导出给调用方使用的函数、类型、模块或 `use` 重新导出。
 
+## 工作区
+
+根目录可以用虚拟工作区清单注册子 crate：
+
+```toml
+[workspace]
+crates = ["hello", "math"]
+```
+
+每个注册目录都维护自己的 `Clue.toml`。根目录执行 `clue check` 或 `clue build` 会按依赖顺序处理所有 crate；在子目录执行时默认只处理当前 crate，`--workspace` 处理全部，`--package <name>` 选择单个 crate。多个二进制同时存在时，使用 `clue run --package <name>`。
+
+工作区只在根目录生成一个 `Clue.lock`，以 `path = "..."` 记录相对根目录的包路径、版本和本地依赖。工作区内的 path 依赖必须在 `workspace.crates` 中注册。
+
 ## 过程宏
 
 过程宏包使用 `[lib] proc-macro = true`：
@@ -239,7 +252,7 @@ union 条目。`pub use` 可以在模块中重导出过程宏，混合导入会�
 函数式宏可用于表达式、条目、类型和模式位置。`attributes(answer)` 注册的 helper 属性只在
 对应 derive 的输入条目、枚举变体和字段上有效，未注册的 helper 属性会在调用宏之前报错。
 
-Clue 会把过程宏包编译为宿主平台进程，而不会把它拼入目标程序。每次宏调用都在独立宿主进程中运行，单次调用最多运行 10 秒，输入和输出各受 16 MiB 上限保护；宿主崩溃不会直接带崩 Clue。derive 和属性宏输出必须是顶层条目，函数式宏输出必须适合调用位置。宏诊断会使用传入的 `Span`，复制到输出的 token 也会把后续编译错误映回原位置；使用 `Span::call_site()` 创建的 token 和诊断则指向宏调用。生成代码中的宏会继续展开，最大深度为 32。过程宏包可以通过本地 path 依赖使用另一个过程宏包，`clue check` 也能直接检查过程宏包自身。LSP 会识别宏导入和调用，并提供分类高亮、悬停、定义跳转、引用、别名重命名和按宏种类过滤的补全。
+Clue 会把过程宏包编译为宿主平台进程，而不会把它拼入目标程序。每个过程宏包第一次调用时懒启动一个独立宿主进程，并在后续调用中复用它；单次调用最多运行 10 秒，输入和输出各受 16 MiB 上限保护。宿主崩溃或超时只会终止当前 worker，下一次调用会重新启动，Clue 不会被直接带崩。derive 和属性宏输出必须是顶层条目，函数式宏输出必须适合调用位置。宏诊断会使用传入的 `Span`，复制到输出的 token 也会把后续编译错误映回原位置；使用 `Span::call_site()` 创建的 token 和诊断则指向宏调用。生成代码中的宏会继续展开，最大深度为 32。过程宏包可以通过本地 path 依赖使用另一个过程宏包，`clue check` 也能直接检查过程宏包自身。LSP 会识别宏导入和调用，并提供分类高亮、悬停、定义跳转、引用、别名重命名和按宏种类过滤的补全。
 
 模块、`use`、`pub use` 和可见性规则见[模块、use 与包](./modules.md)。
 
@@ -288,6 +301,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## 当前限制
 
-- 只支持 Cargo 风格的本地 path 依赖，不支持 registry、版本解析、git 依赖或 lockfile；
+- 只支持本地 path 依赖，不支持 registry、版本解析或 git 依赖；工作区统一使用根目录 `Clue.lock`；
 - 库目标当前只输出 C 源码，不生成静态库或动态库；
 - 二进制构建和运行需要系统中存在受支持的 C 编译器。

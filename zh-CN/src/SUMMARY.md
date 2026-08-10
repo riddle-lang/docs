@@ -52,6 +52,7 @@
 
 - [Clue 构建器](./clue.md)
   - [内置 `syn` 与 `quote!`](./syn.md)
+  - [编写过程宏](./proc-macros.md)
 - [编辑器与 LSP](./editor-support.md)
 - [FFI 与底层工具链](./ffi-and-tooling.md)
 

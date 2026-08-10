@@ -38,7 +38,7 @@ fun main() {
 
 格式宏当前支持多个 `{}` / `{:?}`、尾随逗号以及 `{{` / `}}`。索引参数、命名参数和其他格式说明符尚未实现。
 
-`print!` / `println!` 通过 `std::io::{print, println, print_debug}` 和 `std::fmt::{Debug, Display, Formatter, Result}` 支持字符串、布尔、字符、整数和浮点标量；`Display` 输出 UTF-8 字符，浮点数固定输出 6 位小数。字符串和字符的 `Debug` 输出会添加引号并转义 `\\`、`\"`、`\n`、`\r`、`\t`、`\0`。格式化 trait 和底层输出函数不在 prelude 中。
+`print!` / `println!` 通过隐藏的标准库输出入口和 `std::fmt::{Debug, Display, Formatter, Result}` 支持字符串、布尔、字符、整数和浮点标量；`Display` 输出 UTF-8 字符，浮点数固定输出 6 位小数。字符串和字符的 `Debug` 输出会添加引号并转义 `\\`、`\"`、`\n`、`\r`、`\t`、`\0`。格式化 trait 不在 prelude 中，底层输出入口不属于用户 API。
 
 ## 标准派生
 
