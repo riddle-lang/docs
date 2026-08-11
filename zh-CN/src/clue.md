@@ -5,14 +5,14 @@
 ```bash
 clue init [--bin|--lib|--workspace] <path>
 clue new [--bin|--lib|--workspace] <path>
-clue check [path] [--package <name>] [--workspace] [--target <triple>]
-clue build [path] [--package <name>] [--workspace] [--target <triple>]
-clue run [path] [--package <name>] [--target <triple>] [-- <args>...]
+clue check [path] [--package <name>] [--workspace] [--bin <name>] [--target <triple>] [--locked]
+clue build [path] [--package <name>] [--workspace] [--bin <name>] [--target <triple>] [--release] [--locked]
+clue run [path] [--package <name>] [--bin <name>] [--target <triple>] [--release] [--locked] [-- <args>...]
 ```
 
 `clue init` 在指定目录中初始化项目，`clue new` 创建新目录和项目；二者都会生成清单、入口源码和忽略文件。它们不会覆盖已有的 `Clue.toml` 或目标入口源码。`clue check` 检查整个项目但不生成 C，`clue build` 构建项目，`clue run` 先构建二进制项目再运行生成的程序。
 
-二进制项目会保留 `.clue/build/<package-name>.c` 和默认的 `<package-name>.runtime.c`，并在同一目录生成 `<package-name>`；Windows 下扩展名为 `.exe`。设置 `CC` 时 Clue 会严格使用它，失败时不会静默回退；未设置时，会先尝试目标组件 `c-toolchain.toml` 中配置的编译器（由 `ridup target configure` 设置），再按候选顺序探测：Linux/macOS 目标依次尝试 `clang`、`cc`、`gcc`；Windows 目标依次尝试 `clang-cl`、`clang`、`cc`、`gcc`、`cl`（非 Windows 宿主上的交叉目标会把 `clang-cl` 放到最后），最后追加带版本后缀的 GCC/Clang。候选必须能够完成一次 C11 编译和链接。库项目仍只生成 C 源码，不会选择或链接运行时。
+二进制项目会按 bin 名称保留 `.clue/build/<bin-name>.c` 和默认的 `<bin-name>.runtime.c`，并在同一目录生成 `<bin-name>`；Windows 下扩展名为 `.exe`。`--release` 使用 `.clue/build/<target>/release`，与 debug 缓存隔离。设置 `CC` 时 Clue 会严格使用它，失败时不会静默回退；未设置时，会先尝试目标组件 `c-toolchain.toml` 中配置的编译器（由 `ridup target configure` 设置），再按候选顺序探测：Linux/macOS 目标依次尝试 `clang`、`cc`、`gcc`；Windows 目标依次尝试 `clang-cl`、`clang`、`cc`、`gcc`、`cl`（非 Windows 宿主上的交叉目标会把 `clang-cl` 放到最后），最后追加带版本后缀的 GCC/Clang。候选必须能够完成一次 C11 编译和链接。库项目仍只生成 C 源码，不会选择或链接运行时。
 
 ## 目标平台
 
@@ -72,7 +72,7 @@ entry = "src/bin/hello.rid"
 version = "0.1.0"
 ```
 
-`entry` 的优先级高于 `[[bin]].path` / `[lib].path`：两者同时存在时以 `entry` 为准，路径相对项目根目录解析。
+单个二进制目标时，旧式 `entry` 的优先级高于 `[[bin]].path` / `[lib].path`。多个 `[[bin]]` 各自使用 `path`；`check` 和 `build` 默认处理全部目标，也可以通过 `--bin <name>` 只处理一个，`run` 在多目标时要求指定 `--bin`。未写 `name` 时从入口文件名推导，重名会被拒绝。
 
 ## 运行时与分配器
 
@@ -143,9 +143,9 @@ fun main() -> i32 {
 crates = ["hello", "math"]
 ```
 
-每个注册目录都维护自己的 `Clue.toml`。根目录执行 `clue check` 或 `clue build` 会按依赖顺序处理所有 crate；在子目录执行时默认只处理当前 crate，`--workspace` 处理全部，`--package <name>` 选择单个 crate。多个二进制同时存在时，使用 `clue run --package <name>`。
+每个注册目录都维护自己的 `Clue.toml`。根目录执行 `clue check` 或 `clue build` 会按依赖顺序处理所有 crate；在子目录执行时默认只处理当前 crate，`--workspace` 处理全部，`--package <name>` 选择单个 crate。工作区和包内的二进制分别用 `--package <name>` 与 `--bin <name>` 选择。
 
-工作区只在根目录生成一个 `Clue.lock`，以 `path = "..."` 记录相对根目录的包路径、版本和本地依赖。工作区内的 path 依赖必须在 `workspace.crates` 中注册。
+单包项目在项目根目录生成 `Clue.lock`。工作区只在根目录生成一个 `Clue.lock`，子 crate 不单独生成；锁文件以 `path = "..."` 记录相对根目录的包路径、版本、本地依赖和源码内容指纹。`--locked` 会拒绝缺失或过期的锁文件；工作区内的 path 依赖必须在 `workspace.crates` 中注册。
 
 ## 过程宏
 
@@ -278,6 +278,10 @@ clue run path/to/project -- arg1 arg2
 ```
 
 `run` 只接受二进制项目，并把 `--` 后的参数原样传给程序。程序退出码会成为 `clue run` 的退出码。
+
+## 特性和目标模型
+
+可选本地依赖可以在 `[features]` 中通过 `dep:<name>` 启用；`--features a,b` 启用命名特性，`--no-default-features` 禁用 `default`。path 依赖的 `version` 是精确版本断言，不做版本求解。依赖包必须声明 `[lib]`；项目不解析 registry、git 或远程依赖。
 
 ## 作为 Rust 库使用
 

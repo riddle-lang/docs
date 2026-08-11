@@ -53,7 +53,7 @@ clue build hello
 clue build
 ```
 
-清单中的 `[[bin]].path` 或 `[lib].path` 指定入口；`[package].entry` 的优先级更高，两者同时存在时以 `entry` 为准，路径相对项目根目录解析。没有显式目标时，`clue build` 按包类型寻找入口文件。二进制包依次检查 `src/main.rid`、`src/lib.rid`、`<package-name>.rid`、`main.rid`；库和过程宏包依次检查 `src/lib.rid`、`<package-name>.rid`、`lib.rid`、`src/main.rid`。
+清单中的 `[[bin]].path` 或 `[lib].path` 指定入口。单个二进制目标时，旧式 `[package].entry` 的优先级更高；多个 `[[bin]]` 各自使用 `path`，`clue build` 默认构建全部，也可以用 `clue build --bin <name>` 只构建一个。没有显式目标时，`clue build` 按包类型寻找入口文件。二进制包依次检查 `src/main.rid`、`src/lib.rid`、`<package-name>.rid`、`main.rid`；库和过程宏包依次检查 `src/lib.rid`、`<package-name>.rid`、`lib.rid`、`src/main.rid`。
 
 旧清单也可以在 `[package]` 中指定入口文件：
 
@@ -118,7 +118,7 @@ fun main() -> i32 {
 }
 ```
 
-依赖包会使用自己的入口规则，也可以在依赖包的 `[package]` 中设置 `entry`。当前只支持本地 path 依赖，不支持版本解析、git 依赖或远程 registry。单包项目不需要 `Clue.lock`；工作区会在根目录维护一个统一的锁文件。
+依赖包会使用自己的入口规则，也可以在依赖包的 `[package]` 中设置 `entry`。当前只支持本地 path 依赖，不支持版本解析、git 依赖或远程 registry。单包项目会在项目根目录维护 `Clue.lock`；工作区会在根目录维护一个统一的锁文件。
 
 作为依赖加载时，Clue 会优先读取依赖包的 `[lib].path`；没有 `[lib]` 目标时，默认先寻找 `src/lib.rid`。依赖包中要被外部包使用的项需要写成 `pub`：
 
@@ -139,18 +139,19 @@ pub fun one() -> i32 {
 crates = ["hello", "math"]
 ```
 
-`hello/Clue.toml` 和 `math/Clue.toml` 仍分别声明自己的 `[package]`、目标和依赖。根目录执行 `clue check` 或 `clue build` 会按依赖顺序处理所有注册 crate；在子 crate 目录执行时默认只处理当前 crate，`--workspace` 选择全部，`--package <name>` 选择一个。工作区包含多个可运行二进制时，使用 `clue run --package <name>`。
+`hello/Clue.toml` 和 `math/Clue.toml` 仍分别声明自己的 `[package]`、目标和依赖。根目录执行 `clue check` 或 `clue build` 会按依赖顺序处理所有注册 crate；在子 crate 目录执行时默认只处理当前 crate，`--workspace` 选择全部，`--package <name>` 选择一个。工作区中的包和包内二进制分别用 `--package <name>` 与 `--bin <name>` 选择。
 
-Clue 会在根目录生成 `Clue.lock`，其中以 `path = "..."` 记录相对根目录的本地包路径、版本和依赖关系。子 crate 不生成锁文件。工作区内部的 path 依赖必须同时出现在 `workspace.crates` 中。
+Clue 会在根目录生成 `Clue.lock`，其中以 `path = "..."` 记录相对根目录的本地包路径、版本、依赖关系和源码内容指纹。`--locked` 会拒绝缺失或过期的锁文件。子 crate 不生成锁文件。工作区内部的 path 依赖必须同时出现在 `workspace.crates` 中。
 
 ## 输出文件
 
-二进制项目会保留生成的 C 源码，并输出本机可执行文件：
+二进制项目会保留生成的 C 源码，并输出本机可执行文件。默认宿主 debug 构建使用兼容旧版本的目录；`--release` 和交叉目标使用独立目录：
 
 ```text
-.clue/build/<package-name>.c
-.clue/build/<package-name>       # Linux/macOS
-.clue/build/<package-name>.exe   # Windows
+.clue/build/<bin-name>.c
+.clue/build/<bin-name>       # Linux/macOS
+.clue/build/<bin-name>.exe   # Windows
+.clue/build/<target>/release/<bin-name>[.exe]
 ```
 
 构建成功时会输出：
