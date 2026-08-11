@@ -15,6 +15,17 @@ ridup target list
 
 首版只支持 `x86_64-unknown-linux-gnu`、`aarch64-unknown-linux-gnu`、`i686-unknown-linux-gnu`、`x86_64-pc-windows-msvc`、`i686-pc-windows-msvc`、`aarch64-pc-windows-msvc` 和 `aarch64-apple-darwin`，其他 triple 会被拒绝。
 
+### 如何选择 Release 资产
+
+Release 中有两种 zip，名称里的 `target-` 表示交叉编译目标，不表示当前宿主平台：
+
+| 文件名模式 | 用途 | 内容 |
+| --- | --- | --- |
+| `riddle-v<version>-<platform>-<arch>.zip` | 安装当前机器上的 Riddle 工具链 | `clue`、`riddle-lsp`、`riddlec` 等可执行文件 |
+| `riddle-v<version>-target-<triple>.zip` | 为指定目标进行交叉构建 | `runtime.c`、`target.toml` 和许可证；不包含 `clue`、`riddlec` 或 `riddle-lsp` |
+
+例如，在 Windows x86_64 上使用 `riddle-v0.2.1-windows-x86_64.zip` 安装工具；要构建 `aarch64-unknown-linux-gnu` 程序，则运行 `ridup target add aarch64-unknown-linux-gnu` 安装对应目标组件。目标组件不会替代 Linux sysroot、Windows SDK/MSVC 库或 Apple SDK，也不需要单独加入 `PATH`。
+
 `target add` 会先安装 Riddle runtime，再询问是否安装匹配的 LLVM/Clang。目标组件已安装和 C 工具链已就绪是两个独立状态；Linux 还需要目标 sysroot，Windows MSVC 目标需要 Windows SDK 与 MSVC 库，macOS 需要 Apple SDK。缺少这些系统组件时仍可运行 `clue check`，也可用 `riddlec` 生成可移植 C，但 Clue 不会把该目标报告为可链接状态。
 
 ## 从源码构建
