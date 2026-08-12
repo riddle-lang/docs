@@ -93,6 +93,8 @@ void rgc_free(void *ptr);
 void rgc_collect(void);
 ```
 
+Clue 会单独链接平台进程参数运行时；自定义内存运行时不需要实现 `std::env` 的参数函数。
+
 `rgc_alloc` 返回的地址必须满足普通 C 对象的对齐要求，并且在引用仍可能存在时不能移动。`rgc_realloc` 与 `rgc_free` 供标准库容器（如 `Vector`）显式管理缓冲区：`rgc_realloc` 迁移并保留原内容，`rgc_free` 立即释放且必须接受空指针；基于 malloc 的分配器可直接委托给 `realloc`/`free`。无回收分配器可以忽略 `stack_bottom`，并把 `rgc_collect` 实现为空函数。当前 ABI 不支持移动式 GC、finalizer 或多线程栈注册。
 
 要像 Rust 一样完全关闭 GC，在二进制包中设置：

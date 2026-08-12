@@ -51,7 +51,6 @@ pnpm-debug.log*
 .tmp/
 tmp/
 temp/
-**/superpowers/
 
 # Generated files
 *.bak

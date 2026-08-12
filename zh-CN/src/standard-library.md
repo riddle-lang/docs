@@ -78,12 +78,20 @@ fun main() {
 
 `parse_i32` 只解析十进制 `i32`，目前不报告整数溢出。`time_now` 转发到 C `time` 并返回 `i64`。
 
+## 进程参数
+
+`std::env::args_os()` 返回 `Vector<std::ffi::OsString>`，无损保留宿主参数。Unix 保存原始字节；Windows 直接解析 `GetCommandLineW`，使用 WTF-8 保存 UTF-16，因此孤立代理项也不会丢失。`OsString::as_encoded_bytes()` 只适合在同一平台和版本内传递，`into_string()` 在参数不是有效 Unicode 时返回原值。
+
+`std::env::args()` 返回 `Vector<String>`；只要任一参数不能转换为 Unicode，该函数就会 panic。需要处理任意系统参数时应使用 `args_os()`。
+
 ## 完整 API 清单
 
 | 模块 | 内容 |
 |------|------|
 | `std::option::Option<T>` | `is_some`、`is_none`、`unwrap_or`、`or` |
 | `std::result::Result<T, E>` | `is_ok`、`is_err`、`unwrap_or`、`ok`、`err` |
+| `std::ffi::OsString` | `new`、`from_str`、`as_encoded_bytes`、`into_string`、`len`、`is_empty` |
+| `std::env` | `args_os`、`args` |
 | `std::string::String` | `new`、`from_str`、`as_str`、`len`、`capacity`、`is_empty`、`push_str`、`clear` |
 | `std::str`（impl） | `len`、`is_empty`、`as_bytes`，以及按 Unicode `char` 遍历的 `StrIter` |
 | `std::vector::Vector<T>` | `new`、`len`、`capacity`、`is_empty`、`push`、`pop`、`get`、`get_mut`、`swap`、`clear`、`as_slice`、读写下标和按值迭代 |
