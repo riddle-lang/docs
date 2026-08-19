@@ -1,18 +1,25 @@
 # Clue 构建器
 
-`clue` 是 Riddle 当前的项目构建器。它提供五个命令：
+`clue` 是 Riddle 当前的包管理器和项目构建器。主要命令如下：
 
 ```bash
-clue init [--bin|--lib|--workspace] <path>
-clue new [--bin|--lib|--workspace] <path>
-clue check [path] [--package <name>] [--workspace] [--bin <name>] [--target <triple>] [--locked]
-clue build [path] [--package <name>] [--workspace] [--bin <name>] [--target <triple>] [--release] [--locked]
-clue run [path] [--package <name>] [--bin <name>] [--target <triple>] [--release] [--locked] [-- <args>...]
+clue init|new <path> [--bin|--lib|--workspace]
+clue check|build [path] [-p <package>|--workspace] [--bin <name>] [--features a,b|--all-features] [--all-targets] [--locked]
+clue run [path] [-p <package>] [--bin <name>|--example <name>] [--features a,b|--all-features] [-- <args>...]
+clue test|bench [path] [-p <package>|--workspace] [--test|--bench <name>] [--features a,b|--all-features]
+clue add <name> [--version <req>|--path <path>|--git <url>] [--dev]
+clue remove <name> [--dev]
+clue fetch|update|tree|metadata [path]
+clue package [--list] [path]
+clue publish [--dry-run] [--registry <name>] [path]
+clue install [<package>@<version-req>] [--path <path>|--git <url>]
+clue uninstall <name>
+clue clean [path]
 ```
 
-`clue init` 在指定目录中初始化项目，`clue new` 创建新目录和项目；二者都会生成清单、入口源码和忽略文件。它们不会覆盖已有的 `Clue.toml` 或目标入口源码。`clue check` 检查整个项目但不生成 C，`clue build` 构建项目，`clue run` 先构建二进制项目再运行生成的程序。
+全局 `--offline` 只使用缓存，`-j/--jobs` 控制并行任务数。`clue init` 在指定目录中初始化项目，`clue new` 创建新目录和项目；二者都会生成清单、入口源码和忽略文件。它们不会覆盖已有的 `Clue.toml` 或目标入口源码。`clue check` 检查项目但不生成 C，`clue build` 构建项目，`clue run` 先构建二进制或 example 再运行。
 
-二进制项目会按 bin 名称保留 `.clue/build/<bin-name>.c` 和默认的 `<bin-name>.runtime.c`，并在同一目录生成 `<bin-name>`；Windows 下扩展名为 `.exe`。`--release` 使用 `.clue/build/<target>/release`，与 debug 缓存隔离。设置 `CC` 时 Clue 会严格使用它，失败时不会静默回退；未设置时，会先尝试目标组件 `c-toolchain.toml` 中配置的编译器（由 `ridup target configure` 设置），再按候选顺序探测：Linux/macOS 目标依次尝试 `clang`、`cc`、`gcc`；Windows 目标依次尝试 `clang-cl`、`clang`、`cc`、`gcc`、`cl`（非 Windows 宿主上的交叉目标会把 `clang-cl` 放到最后），最后追加带版本后缀的 GCC/Clang。候选必须能够完成一次 C11 编译和链接。库项目仍只生成 C 源码，不会选择或链接运行时。
+二进制项目会按 bin 名称保留 `.clue/build/<bin-name>.c` 和默认的 `<bin-name>.runtime.c`，并在同一目录生成 `<bin-name>`；Windows 下扩展名为 `.exe`。`--release` 使用 `.clue/build/<target>/release`，与 debug 缓存隔离。设置 `CC` 时 Clue 会严格使用它，失败时不会静默回退；未设置时，会先尝试目标组件 `c-toolchain.toml` 中配置的编译器（由 `ridup target configure` 设置），再按候选顺序探测：Linux/macOS 目标依次尝试 `clang`、`cc`、`gcc`；Windows 目标依次尝试 `clang-cl`、`clang`、`cc`、`gcc`、`cl`（非 Windows 宿主上的交叉目标会把 `clang-cl` 放到最后），最后追加带版本后缀的 GCC/Clang。候选必须能够完成一次 C11 编译和链接。库项目生成 C、目标文件、`.rmeta` 和默认 `.rlib`；`crate-type` 还可请求静态库和动态库。
 
 ## 目标平台
 
@@ -108,16 +115,22 @@ gc = false
 
 运行时属于最终进程，因此 `[runtime]` 只允许出现在二进制包；库和依赖包只生成 ABI 调用，不能选择运行时。
 
-## 本地依赖
+## 依赖
 
-`[dependencies]` 目前支持本地 path 依赖：
+`[dependencies]` 支持 path、git 和 sparse registry。版本使用 semver 约束：
 
 ```toml
 [dependencies]
-math = { path = "../math" }
+math = { path = "../math", version = "^1.0" }
+json = "^1.2"
+codec = { git = "https://example.com/codec.git", tag = "v1.0.0" }
+log = { version = "^1", optional = true, default-features = false }
+
+[dev-dependencies]
+assertions = { path = "../assertions" }
 ```
 
-也支持 Cargo 风格的重命名。依赖键会成为当前包里的模块名，`package` 指向依赖包自己的 `[package].name`：
+表格式依赖还支持 `package` 重命名、`branch`、`tag`、`rev`、`registry`、`features`、`default-features` 和 `optional`。依赖键会成为当前包里的模块名，`package` 指向依赖包自己的 `[package].name`：
 
 ```toml
 [dependencies]
@@ -132,7 +145,7 @@ fun main() -> i32 {
 }
 ```
 
-依赖包也使用自己的 `Clue.toml` 和入口文件。依赖键必须是合法模块名，也就是字母或 `_` 开头，后面跟字母、数字或 `_`。
+`clue add` 和 `clue remove` 会修改清单并保留无关布局。`[dev-dependencies]` 只在 test、example 和 bench 目标中加载。依赖键必须是合法模块名，也就是字母或 `_` 开头，后面跟字母、数字或 `_`。
 
 作为依赖加载时，Clue 会优先使用 `[lib].path`；没有 `[lib]` 目标时，再依次寻找 `src/lib.rid`、`<package-name>.rid`、`lib.rid` 和 `src/main.rid`。依赖包需要用 `pub` 导出给调用方使用的函数、类型、模块或 `use` 重新导出。
 
@@ -147,7 +160,7 @@ crates = ["hello", "math"]
 
 每个注册目录都维护自己的 `Clue.toml`。根目录执行 `clue check` 或 `clue build` 会按依赖顺序处理所有 crate；在子目录执行时默认只处理当前 crate，`--workspace` 处理全部，`--package <name>` 选择单个 crate。工作区和包内的二进制分别用 `--package <name>` 与 `--bin <name>` 选择。
 
-单包项目在项目根目录生成 `Clue.lock`。工作区只在根目录生成一个 `Clue.lock`，子 crate 不单独生成；锁文件以 `path = "..."` 记录相对根目录的包路径、版本、本地依赖和源码内容指纹。`--locked` 会拒绝缺失或过期的锁文件；工作区内的 path 依赖必须在 `workspace.crates` 中注册。
+单包项目在项目根目录生成 `Clue.lock` v3。工作区只维护根目录的一个锁文件，子 crate 不单独生成；工作区内的 path 依赖必须在 `workspace.crates` 中注册。锁文件记录包名、版本、source、依赖、启用的 feature、registry checksum、git revision 和源码指纹。普通 `check`、`build` 和 `fetch` 优先复用已锁定版本，`clue update` 才重新选择满足约束的版本；`--locked` 会拒绝缺失或过期的锁文件，`--offline` 只读取缓存。registry 包下载后会校验 SHA-256，并按安全路径规则解包。
 
 ## 过程宏
 
@@ -227,7 +240,7 @@ pub fun derive_answer(input: TokenStream) -> TokenStream {
 结构化 derive 输入、通用语法节点、自定义 `Parse`、`Visit`、`Fold` 和
 `quote!` 重复语法见[内置 `syn` 与 `quote!`](./syn.md)。
 
-使用方把宏包声明为本地 path 依赖，再把 derive 宏导入独立的宏命名空间：
+使用方把宏包声明为依赖，再把 derive 宏导入独立的宏命名空间；下例使用本地 path：
 
 ```toml
 [dependencies]
@@ -264,7 +277,7 @@ Clue 会把过程宏包编译为宿主平台进程，而不会把它拼入目标
 clue check
 ```
 
-Clue 会展开入口文件声明的外部模块和所有本地 path 依赖，再运行完整的编译检查。错误位置会映射回实际的 `.rid` 文件，而不是统一显示为项目入口文件。
+Clue 会展开入口文件声明的外部模块和锁定依赖，再运行完整的编译检查。错误位置会映射回实际的 `.rid` 文件，而不是统一显示为项目入口文件。
 
 `riddle-lsp` 使用相同的项目加载规则。打开 Clue 项目中的文件时，诊断会包含模块和本地依赖，并优先使用编辑器中尚未保存的内容；任一文件变化后，所有已打开文档的诊断都会刷新。
 
@@ -283,7 +296,15 @@ clue run path/to/project -- arg1 arg2
 
 ## 特性和目标模型
 
-可选本地依赖可以在 `[features]` 中通过 `dep:<name>` 启用；`--features a,b` 启用命名特性，`--no-default-features` 禁用 `default`。path 依赖的 `version` 是精确版本断言，不做版本求解。依赖包必须声明 `[lib]`；项目不解析 registry、git 或远程依赖。
+可选依赖可以在 `[features]` 中通过 `dep:<name>` 启用；`name/feature` 转发依赖 feature，`name?/feature` 只在依赖已启用时转发。`--features a,b` 启用命名 feature，`--all-features` 启用清单中的全部 feature，`--no-default-features` 禁用 `default`。未显式声明目标时，Clue 会发现 `src/main.rid`、`src/bin/*.rid`、`tests/*.rid`、`examples/*.rid` 和 `benches/*.rid`；`--all-targets` 还会检查或构建 test、example 和 bench。
+
+## 获取、发布与安装
+
+`clue fetch` 获取依赖并更新缓存，`clue tree -e features` 显示锁定的 feature，`clue metadata` 输出清单和锁图 JSON。缓存位于 `$CLUE_HOME/registry` 与 `$CLUE_HOME/git`；默认 `CLUE_HOME` 是用户目录下的 `.clue`。
+
+`clue package` 在 `.clue/package` 生成 `.cluepkg`，`--list` 只列出将被打包的文件。`clue publish --dry-run` 执行打包与发布权限校验但不联网；实际发布使用所选 registry API。`clue install --path .`、`clue install calculator@^1` 和 `clue install --git <url>` 会构建二进制并安装到 `$CLUE_HOME/bin`，`clue uninstall <name>` 删除它。
+
+registry 和构建设置可写入 `$CLUE_HOME/config.toml` 或项目的 `.clue/config.toml`，项目配置优先。`CLUE_OFFLINE`、`CLUE_JOBS`、`CLUE_REGISTRY_INDEX` 和 `CLUE_REGISTRY_TOKEN` 可以覆盖配置文件。
 
 ## 作为 Rust 库使用
 
@@ -307,6 +328,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## 当前限制
 
-- 只支持本地 path 依赖，不支持 registry、版本解析或 git 依赖；工作区统一使用根目录 `Clue.lock`；
-- 库目标当前只输出 C 源码，不生成静态库或动态库；
-- 二进制构建和运行需要系统中存在受支持的 C 编译器。
+- 二进制、静态库和动态库的最终链接需要受支持的系统 C 工具链；
+- `clue run` 只能运行宿主目标，交叉构建产物需要复制到目标系统；
+- 交叉链接除 ridup 目标组件外，仍需要目标平台的 sysroot、SDK 和系统库。

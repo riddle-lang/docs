@@ -237,7 +237,7 @@ prelude 只直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`No
 - `std::collections::{TreeMap, TreeSet}` 使用红黑树，键要求实现 `Ord`；`std::collections::{HashMap, HashSet}` 使用开放寻址哈希表、线性探测和负载扩容，键要求实现 `Hash + Eq`；对应实现模块位于 `std::collections::{tree_map, tree_set, hash_map, hash_set}`；
 - `std::parse::parse_i32` 提供十进制 `i32` 解析；`std::time::time_now` 转发到 C `time`。
 
-`Default`、`Hash`、标量格式化和基础集合/解析/时间 API 已经具备可执行行为；`parse_i32` 当前不做溢出诊断。
+`Default`、`Hash`、标量格式化和基础集合/解析/时间 API 已经具备可执行行为；`parse_i32` 会拒绝空串、非法字符和超出 `i32` 范围的输入。
 
 当前影响编译器语义的 lang trait 包括：
 
@@ -302,11 +302,11 @@ C backend 会把标量 std 运算 trait 的显式方法调用直接输出为带�
 |------|------|
 | `riddlec` | 编译器 CLI，支持前端检查、MIR 降级和 C backend |
 | `riddle-lsp` | LSP 服务器，基于 `tower-lsp`，提供诊断、补全、悬停、签名帮助、符号导航、引用、重命名、格式化、Inlay Hint 和语义 Token，并识别过程宏命名空间 |
-| `clue` | 项目构建器，支持 `init`、`new`、`check`、`build` 和 `run`；二进制项目会保留 C 并生成本机可执行文件，库项目只输出 C，过程宏依赖构建为宿主进程 |
+| `clue` | 包管理器和项目构建器，支持项目、workspace、path/git/registry 依赖、锁文件、features、test/bench、打包发布与安装；二进制项目会保留 C 并生成本机可执行文件，库项目可生成 `.rmeta`、`.rlib`、静态库和动态库，过程宏依赖构建为宿主进程 |
 
 ## 当前限制
 
-- `parse_i32` 当前接受十进制输入但不报告整数溢出；
+- `parse_i32` 当前只接受十进制 `i32`，不支持其他进制或数字分隔符；
 - 泛型目前偏向单态化，尚未覆盖完整 Rust 泛型能力；
 - `riddlec` 的 C backend 只输出 C；`clue build` 会严格使用 `CC`，或自动选择能完成 C11 编译和链接的系统 C 编译器来生成本机可执行文件；
 - 逃逸分析当前粒度是整个局部变量，不做字段级拆分；

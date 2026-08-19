@@ -30,7 +30,7 @@ Riddle 使用 Rust 风格的尾表达式、`struct`、`enum`、`trait`、`impl`�
 
 ### Cargo 与 Clue 不是同一个工具
 
-Clue 借用了部分 Cargo 清单形状，但当前依赖只支持本地 path，不支持 registry、版本求解、git 依赖或 lockfile。不要把 Cargo 选项直接写入 `Clue.toml`。
+Clue 借用了部分 Cargo 清单形状，依赖支持 path、git 和 sparse registry，并通过 `Clue.lock` 锁定解析结果；它仍不是 Cargo，不能把未实现的 Cargo 选项直接写入 `Clue.toml`。
 
 ## 与 Kotlin 的关键出入
 

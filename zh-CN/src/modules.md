@@ -84,4 +84,4 @@ fun main() -> i32 {
 math = { package = "math-core", path = "../math-core" }
 ```
 
-Clue 当前只支持本地 path 依赖，不支持 registry、版本求解、git 依赖或 lockfile。完整项目布局和入口规则见[创建与构建项目](./clue-create.md)。
+Clue 支持 path、git 和 sparse registry 依赖，并使用 `Clue.lock` 锁定版本、git revision、registry checksum 和源码指纹。完整项目布局、feature 和入口规则见[创建与构建项目](./clue-create.md)。

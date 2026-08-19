@@ -78,9 +78,9 @@ version = "0.1.0"
 missing entry file; expected src/main.rid, src/lib.rid, <package>.rid, main.rid, or lib.rid
 ```
 
-## 使用本地依赖
+## 使用依赖
 
-Clue 支持本地 path 依赖。假设有两个相邻包：
+Clue 支持 path、git 和 sparse registry 依赖。假设有两个相邻的本地包：
 
 ```text
 workspace/
@@ -118,7 +118,17 @@ fun main() -> i32 {
 }
 ```
 
-依赖包会使用自己的入口规则，也可以在依赖包的 `[package]` 中设置 `entry`。当前只支持本地 path 依赖，不支持版本解析、git 依赖或远程 registry。单包项目会在项目根目录维护 `Clue.lock`；工作区会在根目录维护一个统一的锁文件。
+依赖包会使用自己的入口规则，也可以在依赖包的 `[package]` 中设置 `entry`。依赖声明还可以使用 semver、git 的 `branch`/`tag`/`rev`、registry、feature 和 optional 配置：
+
+```toml
+[dependencies]
+math = { path = "../math", version = "^1.0" }
+json = "^1.2"
+codec = { git = "https://example.com/codec.git", tag = "v1.0.0" }
+log = { version = "^1", optional = true, default-features = false }
+```
+
+单包项目会在项目根目录维护 `Clue.lock` v3；工作区在根目录维护一个统一的锁文件。`clue fetch` 获取并校验依赖，普通构建复用锁定版本，`clue update` 才重新选择版本。`--locked` 拒绝缺失或过期的锁文件，`--offline` 只使用缓存。
 
 作为依赖加载时，Clue 会优先读取依赖包的 `[lib].path`；没有 `[lib]` 目标时，默认先寻找 `src/lib.rid`。依赖包中要被外部包使用的项需要写成 `pub`：
 
@@ -141,7 +151,7 @@ crates = ["hello", "math"]
 
 `hello/Clue.toml` 和 `math/Clue.toml` 仍分别声明自己的 `[package]`、目标和依赖。根目录执行 `clue check` 或 `clue build` 会按依赖顺序处理所有注册 crate；在子 crate 目录执行时默认只处理当前 crate，`--workspace` 选择全部，`--package <name>` 选择一个。工作区中的包和包内二进制分别用 `--package <name>` 与 `--bin <name>` 选择。
 
-Clue 会在根目录生成 `Clue.lock`，其中以 `path = "..."` 记录相对根目录的本地包路径、版本、依赖关系和源码内容指纹。`--locked` 会拒绝缺失或过期的锁文件。子 crate 不生成锁文件。工作区内部的 path 依赖必须同时出现在 `workspace.crates` 中。
+Clue 会在根目录生成 `Clue.lock` v3，记录 path 包的相对路径与源码指纹、git revision、registry checksum、依赖关系和启用的 feature。`--locked` 会拒绝缺失或过期的锁文件。子 crate 不生成锁文件；工作区内部的 path 依赖必须同时出现在 `workspace.crates` 中。
 
 ## 输出文件
 
@@ -166,7 +176,7 @@ clue: built .clue/build/hello.exe
 clue: fresh .clue/build/hello.exe
 ```
 
-库项目只生成 `.clue/build/<package-name>.c`。二进制项目可以直接运行：
+库项目默认生成 C、目标文件、`.rmeta` 和 `.rlib`；`crate-type = ["riddlelib", "staticlib", "cdylib"]` 还会生成可复用的静态库和动态库。二进制项目可以直接运行：
 
 ```bash
 clue run hello
