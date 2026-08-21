@@ -92,7 +92,18 @@ fun main() {
 
 `let mut (count, step) = ...` 不是合法写法。
 
-`let` 没有备选分支，所以它的模式必须匹配该类型的每一个值。枚举变体、字面量这类只覆盖部分取值的模式会报告 `E0057`，需要改用 `match`。
+普通 `let` 没有备选分支，所以它的模式必须匹配该类型的每一个值。枚举变体、字面量这类只覆盖部分取值的模式会报告 `E0057`，需要改用 `match`，或者为这个绑定提供 `else` 分支：
+
+```riddle
+fun unwrap(value: Option<i32>) -> i32 {
+    let Some(number) = value else {
+        return 0;
+    };
+    number
+}
+```
+
+`let-else` 的 `else` 块必须发散（例如 `return`、`break`、`continue` 或无限 `loop`），匹配成功后绑定会在当前作用域的后续代码中可用；失败分支看不到这些绑定。
 
 ## 类型标注
 

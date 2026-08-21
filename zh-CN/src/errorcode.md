@@ -1,6 +1,6 @@
 # Riddle 错误码参考
 
-## 类型检查 (E0001–E0013, E0031–E0046, E0054–E0058, E0060–E0063, E0072, E0391)
+## 类型检查 (E0001–E0013, E0031–E0046, E0054–E0058, E0060–E0063, E0065, E0072, E0391)
 
 <a id="e0001"></a>
 ### E0001 — 类型不匹配
@@ -185,7 +185,7 @@ impl Copy for Wrapper {}  // E0041: `Token` is not Copy
 
 <a id="e0042"></a>
 ### E0042 — 循环控制语句位于循环外
-`break;` 和 `continue;` 只能出现在 `while` 或 `for` 循环体中。
+`break;` 和 `continue;` 只能出现在 `while`、`for` 或 `loop` 循环体中。
 ```riddle
 fun invalid() {
     break;  // E0042: `break` outside of a loop
@@ -268,17 +268,20 @@ fun read(point: model::Point) -> i32 {
 析构方法只能由编译器调用。需要提前结束一个值时使用 prelude 中的 `drop(value)`，它会消费所有权并在被调用函数结束前完成析构。
 
 <a id="e0057"></a>
-### E0057 — `let` 中的可反驳模式
-`let` 没有备选分支，模式必须匹配该类型的每一个值。枚举变体、字面量等只覆盖部分取值的模式需要改用 `match`。
+### E0057 — `let` 或 `for` 中的可反驳模式
+普通 `let` 和 `for` 循环头没有备选分支，模式必须匹配该类型的每一个值。枚举变体、字面量等只覆盖部分取值的模式需要改用 `match`；带发散 `else` 块的 `let-else` 不触发此错误。
 ```riddle
 enum Opt { None, Some(i32) }
 
-let Opt::Some(v) = o;  // E0057: `Opt::None` is not covered
+let Opt::Some(v) = o;              // E0057: `Opt::None` is not covered
+for Opt::Some(v) in opts {}        // E0057: `Opt::None` is not covered
+let Opt::Some(v) = o else { return; }; // OK
 ```
 元组和结构体模式是不可反驳的，可以直接解构：
 ```riddle
 let (a, b) = pair;             // OK
 let Point { x, y } = point;    // OK
+for (k, v) in pairs {}         // OK
 ```
 
 <a id="e0058"></a>
@@ -307,6 +310,26 @@ const ANSWER: i32 = make_answer();  // E0060
 <a id="e0063"></a>
 ### E0063 — `?` 的错误类型无法转换
 源 `Result` 的错误类型必须实现 `Into<目标错误类型>`，并且转换方法的返回类型必须与外层 `Result` 错误类型一致。
+
+<a id="e0065"></a>
+### E0065 — 带值的 `break` 位于 `loop` 之外
+只有 `loop { }` 无限循环可以通过 `break 值;` 交出结果；`while` 和 `for` 中只允许无值的 `break;`。
+```riddle
+fun f() {
+    while true {
+        break 1;  // E0065: `break` with a value is only allowed inside `loop`
+    }
+}
+```
+
+<a id="e0066"></a>
+### E0066 — `let-else` 的失败分支没有发散
+`let-else` 的 `else` 块必须离开当前控制流，不能正常落到绑定之后。使用 `return`、`break`、`continue` 或不会结束的 `loop`：
+```riddle
+let Opt::Some(v) = value else {
+    0                 // E0066
+};
+```
 
 <a id="e0072"></a>
 ### E0072 — 递归类型无限大小

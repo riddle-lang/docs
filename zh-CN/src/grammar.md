@@ -93,7 +93,7 @@ struct_param = attribute* "pub"? ident ":" ty;
 
 struct_decl = "pub"? "struct" ident item_generic_params? where_clause? "{" (struct_param ("," struct_param)* ","?)? "}";
 
-break_stmt = "break" ";";
+break_stmt = "break" expression? ";";
 continue_stmt = "continue" ";";
 return_stmt = "return" expression? ";";
 
@@ -103,13 +103,17 @@ expr_stmt = expr_without_block ";" | expr_with_block ";"?;
 
 expression = expr_with_block | expr_without_block;
 
-expr_with_block = block | if_expr | while_expr | for_expr | match_expr | unsafe_expr;
+expr_with_block = block | if_expr | while_expr | loop_expr | for_expr | match_expr | unsafe_expr;
 
-if_expr = "if" expression block ("else" (if_expr | block))?;
+if_expr = "if" (expression | let_condition) block ("else" (if_expr | block))?;
 
-while_expr = "while" expression block;
+while_expr = "while" (expression | let_condition) block;
 
-for_expr = "for" ident "in" expression block;
+let_condition = "let" pattern "=" expression;
+
+loop_expr = "loop" block;
+
+for_expr = "for" pattern "in" expression block;
 
 match_expr = "match" expression "{" match_arm ("," match_arm)* ","? "}";
 match_arm = attribute* pattern ("if" expression)? "=>" expression;

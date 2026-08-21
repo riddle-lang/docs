@@ -126,8 +126,12 @@ C backend 对整数回绕、除零、最小值除以 `-1`、移位计数和浮�
 ### 控制流和模式
 
 - `if` / `else if` / `else` 表达式；
+- `if let 模式 = 表达式 { } else { }`，在 HIR 降级时脱糖为带 `_` 通配臂的 `match`，绑定只在匹配成功的分支内可见；
+- `let 模式 = 表达式 else { ... };`，允许可反驳模式，失败分支必须发散（`E0066`），成功后的绑定进入外层作用域；
 - `while` 循环；
-- `for item in iterable` 循环，按 `IntoIterator` / `Iterator` 做类型检查，并在 MIR 中降成 `into_iter` / `next` 调用；当前元素、迭代器和提前退出路径具有独立的析构作用域；
+- `while let 模式 = 表达式 { }`，脱糖为 `loop` 内每次迭代重新求值的 `match`，匹配失败时 `break`；
+- `loop { }` 无限循环表达式，`break 值;` 交出循环结果，所有 `break` 值类型合并为结果类型，无可达 `break` 时类型为 `!`；
+- `for item in iterable` 循环，按 `IntoIterator` / `Iterator` 做类型检查，并在 MIR 中降成 `into_iter` / `next` 调用；循环头接受任意不可反驳模式（元组、结构体、通配符等），可反驳模式报告 `E0057`；当前元素、迭代器和提前退出路径具有独立的析构作用域；
 - 泛型参数可以通过 `IntoIterator<Item = ..., IntoIter = ...>` bound 使用 `for`，具体 impl 在单态化时解析；
 - 标准库 `Range`、固定长度数组 `[T; N]`、共享切片 `&[T]`、可变切片 `&mut [T]` 和 `&str` 可直接用于 `for`，数组按值遍历且不要求元素类型为 `Copy`，字符串迭代产出 Unicode `char`；
 - `match` 表达式，以及枚举、布尔值、`()`、整数、元组和结构体的递归穷尽性检查；
