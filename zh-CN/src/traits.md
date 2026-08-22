@@ -57,6 +57,28 @@ impl Summary for Article {
 }
 ```
 
+## 借用 Trait Object
+
+对象安全的 trait 可以通过借用 trait object 传递运行时类型：
+
+```riddle
+trait Speak {
+    fun speak(&self) -> i32;
+}
+
+struct Speaker { value: i32 }
+
+impl Speak for Speaker {
+    fun speak(&self) -> i32 { self.value }
+}
+
+fun call(value: &dyn Speak) -> i32 {
+    value.speak()
+}
+```
+
+`&dyn Trait` 和 `&mut dyn Trait` 在 MIR 中包含数据指针和方法表，调用通过方法表间接分派。当前动态对象要求方法非泛型并使用引用接收者；不支持拥有所有权的 `dyn Trait` 值，也不支持动态调用带泛型方法的 trait。
+
 ## 关联类型
 
 Trait 可以包含关联类型，让实现者指定 trait 方法中用到的具体类型：

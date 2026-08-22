@@ -22,11 +22,11 @@ Riddle 同时借用了 Rust 和 Kotlin 容易辨认的写法，但相同关键�
 
 Riddle 和 Rust 都默认移动非 `Copy` 值，也都区分 `&T` 与 `&mut T`。区别在于，Riddle 不提供显式生命周期参数：编译器追踪引用来源，并在引用可能越过当前栈帧时把值提升到保守式非移动 GC 堆。
 
-GC 只决定存储位置，不代替所有权。移动后使用、冲突借用和 `Drop` 仍按静态规则检查。Rust 教程中关于生命周期标注、`Box`、`Rc`、`Arc` 或 trait object 的章节不能直接映射到当前 Riddle。
+GC 只决定存储位置，不代替所有权。移动后使用、冲突借用和 `Drop` 仍按静态规则检查。Rust 教程中关于生命周期标注、`Box`、`Rc`、`Arc` 或拥有所有权的 trait object 的章节不能直接映射到当前 Riddle。
 
 ### 语法只是子集与重新组合
 
-Riddle 使用 Rust 风格的尾表达式、`struct`、`enum`、`trait`、`impl`、`match`、`if let`、`let else`、`mod` 和 `use`，但当前没有区间模式、`dyn Trait` 或声明式宏。泛型和 callable 主要通过静态单态化实现。
+Riddle 使用 Rust 风格的尾表达式、`struct`、`enum`、`trait`、`impl`、`match`、`if let`、`let else`、`mod` 和 `use`，但当前没有区间模式或声明式宏。Riddle 支持对象安全方法的借用 trait object（`&dyn Trait` / `&mut dyn Trait`），但不支持拥有所有权的动态 trait object；泛型和 callable 主要通过静态单态化实现。
 
 ### Cargo 与 Clue 不是同一个工具
 
