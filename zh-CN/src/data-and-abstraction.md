@@ -6,4 +6,4 @@
 2. trait 声明共享能力，`impl` 为具体类型提供行为；
 3. 模块、可见性、`use` 和包依赖划分名字与 API 边界。
 
-Riddle 当前没有 Kotlin 式类继承。共享行为可以通过静态 trait bound，也可以通过对象安全的借用 trait object（`&dyn Trait` / `&mut dyn Trait`）传递；拥有所有权的动态 trait object 仍未实现。
+Riddle 当前没有 Kotlin 式类继承。共享行为可以通过静态 trait bound，也可以通过对象安全的 trait object 传递：`&dyn Trait` / `&mut dyn Trait` 是借用视图，裸 `dyn Trait` 是由运行时管理存储并负责析构的拥有值。

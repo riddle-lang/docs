@@ -50,10 +50,10 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - 完整的诊断流水线：解析错误、HIR 诊断、类型检查错误、move/escape 分析诊断全部通过 LSP 推送；
 - 增量文本同步（`TextDocumentSyncKind::INCREMENTAL`）；
 - UTF-16 位置编码（正确处理多字节字符如 emoji）；
-- 多工作区管理与索引：发现每个工作区文件夹中的 Clue 项目，在内存中索引未打开文件的符号、静态调用边和直接类型关系；文件或 manifest 变化只失效受影响的项目快照；
+- 多工作区管理与索引：发现每个工作区文件夹中的 Clue 项目，在内存中递归索引未打开文件的模块、类型成员、trait 方法、容器和可见性，并维护静态调用边和直接类型关系；文件或 manifest 变化只失效受影响的项目快照；
 - 补全（`textDocument/completion`）：在 Clue 项目中加载模块和本地依赖，优先使用所有已打开文件的未保存内容；候选遵循词法作用域，包含参数、局部变量和模式绑定，并支持字段、实例方法、模块项、枚举变体、关联函数及导入别名；不可见的公开符号可生成独立 `use path;` 编辑完成自动导入，重名声明保留独立路径；
-- 悬停（`textDocument/hover`）：显示函数签名、字段与参数类型，以及局部表达式的推断类型；
-- 签名帮助（`textDocument/signatureHelp`）：显示函数或方法签名，并跟踪嵌套调用中的当前参数；
+- 悬停（`textDocument/hover`）：显示函数签名、字段与参数类型、局部表达式的推断类型，以及声明前的文档注释；
+- 签名帮助（`textDocument/signatureHelp`）：显示函数或方法签名、声明文档，并跟踪嵌套调用中的当前参数；
 - 声明、定义、类型定义与实现跳转（`textDocument/declaration`、`textDocument/definition`、`textDocument/typeDefinition`、`textDocument/implementation`）：支持局部绑定、模块项、字段、方法及跨文件符号，并把 trait 调用分别映射到 trait 声明和具体 impl；
 - 静态调用层级与类型层级：调用边覆盖编译器能够静态确定的自由函数、命名函数值、固有方法和 trait 方法声明；类型层级连接直接 supertrait、子 trait 及 `impl Trait for Type` 的实现类型；
 - 项目级引用与重命名、文档高亮覆盖未打开模块和非文件 URI；文档符号按当前文档返回，工作区符号会合并已打开文档分析与项目 `ProjectIndex` 中未打开文件的符号；
@@ -315,6 +315,6 @@ C backend 会把标量 std 运算 trait 的显式方法调用直接输出为带�
 - `riddlec` 的 C backend 只输出 C；`clue build` 会严格使用 `CC`，或自动选择能完成 C11 编译和链接的系统 C 编译器来生成本机可执行文件；
 - 逃逸分析会沿结构体、元组和数组字段传播引用来源；字段模式绑定可以单独提升到 GC 堆，只有根绑定或无法静态细分的访问才提升整个存储槽；
 - TODO：数组 `IntoIterator` 当前按索引顺序产出元素；若未来允许自定义数组迭代器乱序移出元素，需要先加入 `MaybeUninit` / `ManuallyDrop` 等价存储和逐槽存活状态，确保剩余元素只析构一次；
-- trait 方法支持对象安全的 `&dyn Trait` / `&mut dyn Trait` 数据指针和方法表调用；尚不支持拥有所有权的 `dyn Trait` 值、带泛型方法的动态对象，以及 `dyn Fn*`、异构可调用值容器、递归匿名函数、匿名函数泛型参数或匿名函数参数模式；
+- trait 方法支持对象安全的 `&dyn Trait` / `&mut dyn Trait` 借用对象和拥有所有权的 `dyn Trait` 值；拥有值使用数据指针、方法表和类型专属 drop 槽位，并在 GC / no-GC runtime 下分别使用 `rgc_alloc` / `rgc_free` 或 `riddle_alloc` / `riddle_free`；拥有对象可以重借用为 `&dyn Trait`，父 trait 支持对象向上转型，泛型参数可在满足 trait bound 时转换为拥有对象，数组字面量会逐元素应用转换；跨父 trait 的同名方法拒绝为歧义，非对象安全方法会明确报告原因；`dyn Fn`、`dyn FnMut` 和 `dyn FnOnce` 支持拥有值与借用值，并复用 callable ABI；仍不支持带泛型方法的动态对象、异构可调用值容器、递归匿名函数、匿名函数泛型参数或匿名函数参数模式；
 - `Fn`、`FnMut`、`FnOnce` 是编译器密封能力，用户代码不能手动实现；
 - 这是开发中工具链，不保证语法和 ABI 稳定。

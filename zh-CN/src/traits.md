@@ -77,7 +77,35 @@ fun call(value: &dyn Speak) -> i32 {
 }
 ```
 
-`&dyn Trait` 和 `&mut dyn Trait` 在 MIR 中包含数据指针和方法表，调用通过方法表间接分派。当前动态对象要求方法非泛型并使用引用接收者；不支持拥有所有权的 `dyn Trait` 值，也不支持动态调用带泛型方法的 trait。
+`&dyn Trait` 和 `&mut dyn Trait` 是借用视图，在 MIR 中包含数据指针和方法表，调用通过方法表间接分派。父 trait 的对象安全方法也会递归加入方法表：
+
+```riddle
+trait Loud: Speak {
+    fun volume(&self) -> i32;
+}
+
+fun inspect(value: &dyn Loud) -> i32 {
+    value.speak() + value.volume()
+}
+```
+
+当前动态对象要求方法非泛型并使用引用接收者；带泛型方法的 trait 不能用于动态调用。
+
+## 拥有 Trait Object
+
+裸的 `dyn Trait` 表示拥有所有权的、大小固定的动态值。把具体实现转换为它时，MIR 会把实现值放入堆存储，并保存数据指针、对象安全方法表和类型专属的 drop 槽位：
+
+```riddle
+fun make() -> dyn Speak {
+    Speaker { value: 7 }
+}
+
+fun call_owned(value: dyn Speak) -> i32 {
+    value.speak()
+}
+```
+
+启用 GC 时，堆存储使用 `rgc_alloc` / `rgc_free`；`[runtime] gc = false` 时改用 `riddle_alloc` / `riddle_free`，因此不需要额外的 `Box<T>` 语法。拥有值离开作用域时通过 drop 槽位释放具体实现；拥有对象可写成 `&owned` 重借用为 `&dyn Trait`，并可向上转型到父 trait。数组 expected type 会逐元素构造拥有对象，带 trait bound 的泛型参数也可转换为拥有对象。跨父 trait 的同名方法会报告歧义；`dyn Fn`、`dyn FnMut` 和 `dyn FnOnce` 也可作为拥有或借用的 callable 值，并复用 `{ call, env, drop }` ABI；带泛型方法的动态对象仍未支持。
 
 ## 关联类型
 
