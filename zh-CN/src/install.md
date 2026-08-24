@@ -4,7 +4,7 @@
 
 ## 下载预编译版本
 
-[GitHub Releases](https://github.com/riddle-lang/riddle/releases) 提供 Windows、Linux 和 macOS 的预编译 zip。下载对应平台和架构的文件，解压后把二进制所在目录加入 `PATH`。发布包包含 `clue`、`riddle-lsp`、`riddlec`、README 和 Apache-2.0 许可证。
+[GitHub Releases](https://github.com/riddle-lang/riddle/releases) 提供 Windows、Linux 和 macOS 的预编译 zip。下载对应平台和架构的文件，解压后把二进制所在目录加入 `PATH`。发布包包含 `clue`、`riddle-lsp`、`riddlec`、`riddle`、README 和 Apache-2.0 许可证。
 
 ## 使用 ridup 管理工具链
 
@@ -42,7 +42,7 @@ ridup run dev clue --version
 channel = "canary"
 ```
 
-选择优先级依次是代理参数（例如 `clue +dev build`）、`RIDUP_TOOLCHAIN`、最近目录的 `ridup override set <toolchain>`、最近的 `riddle-toolchain.toml`、默认工具链。以 `clue`、`riddlec` 或 `riddle-lsp` 名称安装的 ridup 可执行文件会作为代理，运行所选工具链中的同名组件。
+选择优先级依次是代理参数（例如 `clue +dev build`）、`RIDUP_TOOLCHAIN`、最近目录的 `ridup override set <toolchain>`、最近的 `riddle-toolchain.toml`、默认工具链。以 `clue`、`riddlec`、`riddle` 或 `riddle-lsp` 名称安装的 ridup 可执行文件会作为代理，运行所选工具链中的同名组件。
 
 交叉目标独立于宿主工具链安装：
 
@@ -59,10 +59,10 @@ Release 中有两种 zip，名称里的 `target-` 表示交叉编译目标，不
 
 | 文件名模式 | 用途 | 内容 |
 | --- | --- | --- |
-| `riddle-v<version>-<platform>-<arch>.zip` | 安装当前机器上的 Riddle 工具链 | `clue`、`riddle-lsp`、`riddlec` 等可执行文件 |
-| `riddle-v<version>-target-<triple>.zip` | 为指定目标进行交叉构建 | `runtime.c`、`target.toml` 和许可证；不包含 `clue`、`riddlec` 或 `riddle-lsp` |
+| `riddle-v<version>-<platform>-<arch>.zip` | 安装当前机器上的 Riddle 工具链 | `clue`、`riddle-lsp`、`riddlec`、`riddle` 等可执行文件 |
+| `riddle-v<version>-target-<triple>.zip` | 为指定目标进行交叉构建 | `runtime.c`、`target.toml` 和许可证；不包含 `clue`、`riddle`、`riddlec` 或 `riddle-lsp` |
 
-例如，在 Windows x86_64 上使用 `riddle-v0.2.1-windows-x86_64.zip` 安装工具；要构建 `aarch64-unknown-linux-gnu` 程序，则运行 `ridup target add aarch64-unknown-linux-gnu` 安装对应目标组件。目标组件不会替代 Linux sysroot、Windows SDK/MSVC 库或 Apple SDK，也不需要单独加入 `PATH`。
+例如，在 Windows x86_64 上使用 `riddle-v0.2.2-windows-x86_64.zip` 安装工具；要构建 `aarch64-unknown-linux-gnu` 程序，则运行 `ridup target add aarch64-unknown-linux-gnu` 安装对应目标组件。目标组件不会替代 Linux sysroot、Windows SDK/MSVC 库或 Apple SDK，也不需要单独加入 `PATH`。
 
 `target add` 会先安装 Riddle runtime，再询问是否安装匹配的 LLVM/Clang。目标组件已安装和 C 工具链已就绪是两个独立状态；Linux 还需要目标 sysroot，Windows MSVC 目标需要 Windows SDK 与 MSVC 库，macOS 需要 Apple SDK。缺少这些系统组件时仍可运行 `clue check`，也可用 `riddlec` 生成可移植 C，但 Clue 不会把该目标报告为可链接状态。
 
@@ -84,13 +84,13 @@ cd riddle
 cargo install --path . --features install-bins --force --target-dir "${TMPDIR:-/tmp}/riddle-install"
 ```
 
-这会一次安装 `clue`、`riddle-lsp` 和 `riddlec`。在 PowerShell 中也可以写成：
+这会一次安装 `clue`、`riddle-lsp`、`riddlec` 和 `riddle`。在 PowerShell 中也可以写成：
 
 ```powershell
 cargo install --path . --features install-bins --force --target-dir "$env:TEMP\riddle-install"
 ```
 
-如果只验证这三个安装二进制的构建，请限定根发行包，避免 workspace 中的同名开发包重复输出：
+如果只验证这四个安装二进制的构建，请限定根发行包，避免 workspace 中的同名开发包重复输出：
 
 ```bash
 cargo build -p riddle --release --features install-bins --bins
@@ -99,6 +99,7 @@ cargo build -p riddle --release --features install-bins --bins
 如果只想在源码目录中临时运行，也可以使用：
 
 ```bash
+cargo run -p riddle -- fmt --help
 cargo run -p riddlec -- --help
 ```
 
@@ -107,6 +108,7 @@ cargo run -p riddlec -- --help
 ```bash
 riddlec --version
 clue --version
+riddle --version
 riddle-lsp --version
 ```
 
@@ -121,7 +123,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 ```
 
-根包的 `install-bins` feature 只负责发布 `clue`、`riddle-lsp` 和 `riddlec`。不要把 `--all-features` 加到 workspace 测试命令中，否则根发行包与成员 crate 的同名二进制会触发 Cargo 输出文件碰撞警告；独立的 `cargo check` 已覆盖这些安装入口。
+根包的 `install-bins` feature 负责发布 `clue`、`riddle-lsp`、`riddlec` 和 `riddle`。不要把 `--all-features` 加到 workspace 测试命令中，否则根发行包与成员 crate 的同名二进制会触发 Cargo 输出文件碰撞警告；独立的 `cargo check` 已覆盖这些安装入口。
 
 该命令检查 Clippy 默认启用的全部规则，并把告警视为错误。`pedantic`、`nursery` 和 `cargo` 是独立的实验性或额外风格类别，不属于仓库的合并门槛。
 

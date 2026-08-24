@@ -24,6 +24,8 @@ riddlec [--verbose] [--no-std] [--backend c] [--target <triple>] [--output <file
 
 `--backend c` 会生成调用 `rgc` ABI 的 C 代码；如需可执行文件，使用本机 `cc`、`gcc` 或 `clang` 同时编译生成结果与发行包附带的 `runtime.c`。`clue build` 会自动完成这一步，不依赖 Boehm GC。
 
+`riddle fmt` 提供源码格式化和 `--check` 检查，LSP 格式化请求与该命令共享实现。
+
 不指定后端时，`riddlec` 在完成 move/borrow 检查后停止；只有生成后端代码时才继续降级 MIR。
 
 `riddlec` 会自动把 `std/lib.rid` 拼到用户源码后面，因此 `std::marker::Copy`、`std::clone::Clone` 和比较、运算 trait 不需要手动定义。
@@ -304,6 +306,7 @@ C backend 会把标量 std 运算 trait 的显式方法调用直接输出为带�
 
 | 工具 | 状态 |
 |------|------|
+| `riddle fmt` | 源码格式化 CLI，支持文件、标准输入、`--check`、缩进宽度和硬制表符；与 LSP 复用 formatter |
 | `riddlec` | 编译器 CLI，支持前端检查、MIR 降级和 C backend |
 | `riddle-lsp` | LSP 服务器，基于 `tower-lsp`，提供诊断、补全、悬停、签名帮助、符号导航、引用、重命名、格式化、Inlay Hint 和语义 Token，并识别过程宏命名空间 |
 | `clue` | 包管理器和项目构建器，支持项目、workspace、path/git/registry 依赖、锁文件、features、test/bench、打包发布与安装；二进制项目会保留 C 并生成本机可执行文件，库项目可生成 `.rmeta`、`.rlib`、静态库和动态库，过程宏依赖构建为宿主进程 |

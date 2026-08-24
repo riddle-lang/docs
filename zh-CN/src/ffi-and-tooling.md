@@ -24,6 +24,20 @@ riddlec [--verbose] [--no-std] [--backend c] [--target <triple>] [--output <file
 
 `riddlec` 会自动把 `std/lib.rid` 拼到用户源码后面，因此基础 lang trait 不需要手动引入。
 
+## riddle fmt
+
+`riddle fmt` 使用与 LSP 相同的源码格式化器：默认格式化文件，也可以从标准输入读取，或用 `--check` 检查格式而不修改文件。
+
+```bash
+riddle fmt src/main.rid
+riddle fmt --check src/main.rid
+cat src/main.rid | riddle fmt --emit stdout
+```
+
+`--tab-size <n>` 设置缩进宽度，`--hard-tabs` 使用制表符。LSP 的 `textDocument/formatting` 复用同一实现。
+
+CLI 在解析失败时报告行列、返回非零状态并保持文件不变；编辑器中的 LSP 请求仍可对未完成源码提供格式化结果。
+
 ## C backend
 
 使用 C backend：
