@@ -25,11 +25,14 @@ Riddle 是静态类型语言。每个绑定、参数、返回值和表达式都�
 ```riddle
 let integer = 42i32;
 let byte = 255u8;
+let mask = 0xff_00u16;
+let permissions = 0o755;
+let flags = 0b1010_0101u8;
 let single = 3.14f32;
 let double = 1.0f64;
 ```
 
-当前整数字面量只支持十进制形式及类型后缀，不支持 Rust 的十六进制、八进制、二进制或分隔符写法。
+整数字面量支持十进制、`0x` 十六进制、`0o` 八进制和 `0b` 二进制；各形式都可以使用 `_` 分隔符和整数类型后缀。
 
 词法器会额外接受 `i128`、`u128`、`f16`、`f128` 后缀，但类型系统只支持 8 到 64 位的整数和 `f32` / `f64`，这些后缀会在类型检查时报 `E0011`。
 
@@ -209,7 +212,7 @@ let value: Slot<Pair<i32, bool>> = Slot::Value(Pair {
 });
 ```
 
-函数、trait 与 `impl` 的类型参数可以直接带 trait bound；结构体和枚举通过 `where` 子句约束类型参数。const 参数声明自己的整数类型，当前主要用于数组长度。构造、模式匹配与行为实现分别见[结构体](./structs.md)、[枚举、模式与 match](./enums-and-patterns.md)、[Trait](./traits.md)和[impl 块](./impls.md)。
+函数、trait、`impl`、结构体与枚举的类型参数都可以直接带 trait bound，也可以使用 `where` 子句。const 参数声明自己的整数类型，当前主要用于数组长度。构造、模式匹配与行为实现分别见[结构体](./structs.md)、[枚举、模式与 match](./enums-and-patterns.md)、[Trait](./traits.md)和[impl 块](./impls.md)。
 
 ## 原始指针
 

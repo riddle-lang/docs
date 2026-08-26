@@ -119,6 +119,6 @@ impl<T, const N: usize> ArrayIter<T, N> {
 
 ## 约束与单态化
 
-类型参数可以带 trait bound：函数和 trait 与 impl 的泛型位置直接写 `<T: Trait>`，多个 bound 用 `+` 连接，也可以写成 `where` 子句；bound 还可以约束关联类型，例如 `<T: std::ops::Add<Output = T>>`。函数与 trait 和 impl 的类型参数可以直接带 bound，结构体和枚举通过 `where` 子句约束类型参数。完整规则见[Trait](./traits.md)和[impl 块](./impls.md)。
+类型参数可以带 trait bound：函数、trait、impl、结构体和枚举的泛型位置都可以直接写 `<T: Trait>`，多个 bound 用 `+` 连接，也可以写成 `where` 子句；bound 还可以约束关联类型，例如 `<T: std::ops::Add<Output = T>>`。完整规则见[Trait](./traits.md)和[impl 块](./impls.md)。
 
 编译器会检查推断或显式给出的实参类型是否满足 bound；函数体内可以通过 bound 调用 trait 方法。C backend 会为用到的泛型函数和方法按类型组合生成单态化函数，并静态分派到具体 impl，不会生成动态分派。

@@ -54,7 +54,7 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 - UTF-16 位置编码（正确处理多字节字符如 emoji）；
 - 多工作区管理与索引：发现每个工作区文件夹中的 Clue 项目，在内存中递归索引未打开文件的模块、类型成员、trait 方法、容器和可见性，并维护静态调用边和直接类型关系；文件或 manifest 变化只失效受影响的项目快照；
 - 补全（`textDocument/completion`）：在 Clue 项目中加载模块和本地依赖，优先使用所有已打开文件的未保存内容；候选遵循词法作用域，包含参数、局部变量和模式绑定，并支持字段、实例方法、模块项、枚举变体、关联函数及导入别名；不可见的公开符号可生成独立 `use path;` 编辑完成自动导入，重名声明保留独立路径；
-- 悬停（`textDocument/hover`）：显示函数签名、字段与参数类型、局部表达式的推断类型，以及声明前的文档注释；
+- 悬停（`textDocument/hover`）：显示函数签名、字段与参数类型、局部表达式的推断类型，以及声明前的文档注释或同行 `//<` 尾随文档；
 - 签名帮助（`textDocument/signatureHelp`）：显示函数或方法签名、声明文档，并跟踪嵌套调用中的当前参数；
 - 声明、定义、类型定义与实现跳转（`textDocument/declaration`、`textDocument/definition`、`textDocument/typeDefinition`、`textDocument/implementation`）：支持局部绑定、模块项、字段、方法及跨文件符号，并把 trait 调用分别映射到 trait 声明和具体 impl；
 - 静态调用层级与类型层级：调用边覆盖编译器能够静态确定的自由函数、命名函数值、固有方法和 trait 方法声明；类型层级连接直接 supertrait、子 trait 及 `impl Trait for Type` 的实现类型；
@@ -168,7 +168,7 @@ C backend 对整数回绕、除零、最小值除以 `-1`、移位计数和浮�
 - 标准库 `Option<T>` 和 `Result<T, E>`；
 - 独立的匿名函数与命名函数项类型，以及静态 `Fn` / `FnMut` / `FnOnce` bound；
 - 泛型函数、泛型结构体、泛型枚举、泛型 impl；
-- 泛型 bound：`<T: Trait>`、`<T: A + B>`、`where T: Trait`；
+- 函数、trait、impl、结构体和枚举的泛型 bound：`<T: Trait>`、`<T: A + B>`、`where T: Trait`；
 - 类型参数实例化；
 - const 参数实例化，例如 `Buffer<i32, 3>`；
 - 无空格嵌套泛型类型参数，例如 `Box<Box<i32>>` 和 `Box<Box<Box<i32>>>`。

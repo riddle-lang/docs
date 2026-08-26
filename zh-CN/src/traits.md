@@ -140,7 +140,7 @@ impl Iterator for Counter {
 
 ## 泛型约束
 
-泛型函数和 impl 可以通过 bound 要求类型实现某个 trait：
+函数、trait、impl、结构体和枚举都可以通过 bound 要求类型实现某个 trait：
 
 ```riddle
 fun read<T: Named>(value: T) -> i32 {
