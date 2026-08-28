@@ -122,8 +122,10 @@ unsafe_expr = "unsafe" block;
 
 expr_without_block = unary (("as" ty) | (binop unary))*;
 
-lambda_expr = "move"? "fun" "(" (lambda_param ("," lambda_param)*)? ")" ("->" ty)? block;
-lambda_param = "mut"? ident (":" ty)?;
+lambda_expr = "move"? "fun" lambda_generic_params? "(" (lambda_param ("," lambda_param)*)? ")" ("->" ty)? where_clause? block;
+lambda_generic_params = "<" lambda_generic_param ("," lambda_generic_param)* ">";
+lambda_generic_param = ident (":" generic_bound ("+" generic_bound)*)?;
+lambda_param = pattern (":" ty)?;
 
 unary = prefix_op unary | postfix;
 

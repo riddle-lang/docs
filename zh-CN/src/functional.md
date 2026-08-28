@@ -19,6 +19,23 @@ fun main() -> i32 {
 
 省略的参数和返回类型会在当前函数体内做单态推断。无法确定类型时需要显式标注，例如 `fun(x: i32) -> i32 { x }`。每个匿名函数表达式都有独立的具体类型，即使两个表达式的参数和返回类型完全相同，它们也不会自动变成同一种类型。
 
+匿名函数支持泛型参数、bound、`where` 子句和参数解构，并在每个调用点单态化：
+
+```riddle
+let first = fun<T: Copy>((left, _): (T, T)) -> T { left };
+let value = first::<i32>((1, 2));
+```
+
+泛型匿名函数在每个调用点单态化，也可以捕获外层值并递归调用自身：
+
+```riddle
+let base = 3;
+let choose = fun<T>(value: T) -> i32 {
+    if true { base } else { choose::<T>(value) }
+};
+let value = choose::<i32>(9);
+```
+
 `move fun(...)` 会按值捕获所有使用到的外部位置，`Copy` 值仍然复制。`move` 只改变捕获所有权，不会单独把匿名函数变成 `FnOnce`；按值捕获后只读取的值仍可产生 `Fn`。
 
 ## 捕获
@@ -49,7 +66,7 @@ fun count() -> i32 {
 
 ## 可调用参数与返回值
 
-参数位置使用 `impl Fn`、`impl FnMut` 或 `impl FnOnce` 接收匿名函数和安全命名函数项：
+参数位置的一般 `impl Trait` 会引入隐藏泛型参数；返回位置的一般 `impl Trait` 会隐藏一个具体返回类型。可调用值使用 `impl Fn`、`impl FnMut` 或 `impl FnOnce` 携带调用签名并接收匿名函数、安全命名函数项或实现对应 callable trait 的用户类型：
 
 ```riddle
 fun call_twice(mut f: impl FnMut(i32) -> i32, value: i32) -> i32 {
@@ -78,7 +95,19 @@ fun make_adder(base: i32) -> impl Fn(i32) -> i32 {
 
 所有返回路径必须产生同一个具体匿名函数或命名函数项类型。
 
-`Fn`、`FnMut`、`FnOnce` 只能作为编译器提供的 callable 能力使用，用户代码不能手动实现它们。`dyn Fn*` 支持拥有值和借用值，二者共用 `{ call, env, drop }` 的内部 callable ABI；拥有的 `FnMut` 值或不可变借用需要可变绑定，可变借用 `&mut dyn FnMut` 只需要引用本身可变，`FnOnce` 调用后会移动该值。递归匿名函数、匿名函数泛型参数和匿名函数参数模式同样不支持。不安全函数项不能传给安全的 `Fn*` 参数。
+用户类型可以实现 callable trait。`Fn` 的 `call` 使用 `&self`，`FnMut` 使用 `&mut self`，`FnOnce` 使用 `self`，其余参数和返回类型必须与 impl 头中的签名一致：
+
+```riddle
+struct Adder { amount: i32 }
+
+impl Fn(i32) -> i32 for Adder {
+    fun call(&self, value: i32) -> i32 {
+        value + self.amount
+    }
+}
+```
+
+`dyn Fn*` 支持拥有值和借用值，二者共用 `{ call, env, drop }` 的内部 callable ABI；拥有的 `FnMut` 值或不可变借用需要可变绑定，可变借用 `&mut dyn FnMut` 只需要引用本身可变，`FnOnce` 调用后会移动该值。不安全函数项不能传给安全的 `Fn*` 参数。
 
 ## 迭代协议
 

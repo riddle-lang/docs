@@ -80,7 +80,7 @@ fun abs(x: i32) -> i32 {
 
 ## 可调用参数与返回值
 
-参数位置使用 `impl Fn`、`impl FnMut` 或 `impl FnOnce` 接收匿名函数和安全命名函数项，返回位置的 `impl Fn*` 隐藏一个具体返回类型；需要运行时分派时可使用拥有或借用的 `dyn Fn*`。`Fn`、`FnMut`、`FnOnce` 只能作为编译器提供的 callable 能力使用，用户代码不能手动实现它们。完整的捕获规则、调用能力与限制见[闭包与迭代器](./functional.md#可调用参数与返回值)。
+参数位置可以使用一般的 `impl Trait`，它等价于由编译器引入一个满足该 bound 的隐藏泛型参数；返回位置的 `impl Trait` 隐藏一个具体返回类型，所有返回路径必须选择同一具体类型。`impl Fn`、`impl FnMut` 和 `impl FnOnce` 额外携带调用签名；需要运行时分派时可使用拥有或借用的 `dyn Trait` / `dyn Fn*`。完整的捕获规则、调用能力与限制见[闭包与迭代器](./functional.md#可调用参数与返回值)。
 
 ## 函数声明
 

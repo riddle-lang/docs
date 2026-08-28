@@ -92,8 +92,8 @@ MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`�
 
 - `let` 绑定，默认不可变；
 - `let mut` 可变绑定；
-- `fun(x) { x + 1 }` 与 `move fun(x) { x + 1 }` 匿名函数、单态参数推断和闭包捕获；
-- 参数和返回位置的 `impl Fn`、`impl FnMut`、`impl FnOnce`，以及显式泛型 callable bound；
+- `fun(x) { x + 1 }` 与 `move fun(x) { x + 1 }` 匿名函数、单态参数推断和闭包捕获；支持泛型参数与 bound、参数解构，以及泛型和非泛型自递归绑定；
+- 参数和返回位置的一般 `impl Trait`，以及带调用签名的 `impl Fn`、`impl FnMut`、`impl FnOnce`；
 - 按用法推断共享、可变和值捕获，精确追踪静态字段和元组元素，并据此检查 `Fn`、`FnMut`、`FnOnce` 调用能力；
 - 每个匿名函数表达式、命名函数项和泛型函数实例具有独立的静态类型；
 - 显式类型标注；
@@ -181,6 +181,7 @@ C backend 对整数回绕、除零、最小值除以 `-1`、移位计数和浮�
 - trait 默认方法；impl 未覆写时使用默认体，显式覆写优先；
 - 关联类型声明和默认关联类型；
 - `impl Trait for Type`；
+- 用户类型实现 `Fn(参数...) -> 返回类型`、`FnMut` 和 `FnOnce`，并静态调用其 `call` 方法；
 - `impl Type` 固有方法；
 - `self`、`&self`、`&mut self` 接收者；
 - 方法调用 `value.method()`；
@@ -221,8 +222,8 @@ Clue 支持 `#[proc_macro_derive(Name, attributes(...))]`、`#[proc_macro_attrib
 
 prelude 只直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`、`Ok`、`Err`、`Copy`、`Clone`、`Drop`、`drop`、`Default`、`Into`、比较 trait 和迭代协议。集合、格式化 trait、具体迭代器、区间、解析、时间及底层输出函数需要从各自模块显式导入；标准宏命名空间隐式提供 `Debug`、`Clone`、`Copy`、`Default`、`Hash`、`PartialEq`、`Eq`、`PartialOrd`、`Ord` 派生，格式化与输出宏，以及 `assert!` / `assert_eq!` / `assert_ne!`、对应的 `debug_assert*` 宏、`todo!`、`unimplemented!` 和 `unreachable!`。
 
-- `std::option::Option<T>`，提供 `is_some`、`is_none`、`unwrap_or` 和 `or`；
-- `std::result::Result<T, E>`，提供 `is_ok`、`is_err`、`unwrap_or`、`ok` 和 `err`；
+- `std::option::Option<T>`，提供 `is_some`、`is_none`、`unwrap`、`unwrap_or`、`map`、`and_then` 和 `or`；
+- `std::result::Result<T, E>`，提供 `is_ok`、`is_err`、`unwrap`、`unwrap_or`、`map`、`and_then`、`ok` 和 `err`；
 - `std::ffi::OsString` 无损保存平台字符串；`std::env::args_os()` 在 Unix 保存原始参数字节，在 Windows 解析 `GetCommandLineW` 并以 WTF-8 保存 UTF-16，`std::env::args()` 则严格转换为 `String`，遇到非 Unicode 参数时 panic；
 - `print!` / `println!` 通过隐藏的标准库输出入口和 `std::fmt::{Debug, Display, Formatter, Result}` 支持字符串、布尔、字符、整数和浮点标量；格式化 trait 不在 prelude 中，底层输出入口不属于用户 API。`Debug` 与 `Display` 都使用 `fmt(&self, formatter: &mut Formatter) -> Result`，字符串和字符的 `Debug` 输出会添加引号并转义；标准派生支持结构体、泛型结构体以及 unit、tuple、named 三类枚举变体，当前包括 `Debug`、`Clone`、`Copy`、`Default`、`Hash`、`PartialEq`、`Eq`、`PartialOrd` 和 `Ord`，并为泛型参数生成相应 bound；枚举 `Default` 要求恰好一个带 `#[default]` 的 unit 变体，排序派生按变体声明顺序和 payload 字典序工作；`Copy` impl 会验证所有字段和 payload，比较派生仍需满足父 trait；`Option`、`Result`、`String`、`Vector`、`HashMap`、`HashSet`、`TreeMap` 和 `TreeSet` 均通过 `Debug` 派生实现格式化；`print!` / `println!` 支持空调用，`format!` 要求字符串字面量并返回 `String`，`panic!()` 使用 `explicit panic`，`panic!(...)` 在终止前格式化消息；四个宏都支持字符串字面量、多个 `{}` / `{:?}` 参数、尾随逗号以及 `{{` / `}}`，并在编译期校验格式串；参数按从左到右的顺序分别通过 `Display` / `Debug` 格式化；索引参数、命名参数和其他格式说明符尚未实现；
 - `assert!`、`assert_eq!`、`assert_ne!` 及对应的 `debug_assert*` 宏复用 `panic!`；比较断言只求值两侧一次并显示 `Debug` 值，自定义消息仅在失败路径求值。`todo!`、`unimplemented!` 和 `unreachable!` 返回 `!` 并保留调用位置；当前所有构建都会执行 debug assertion；
@@ -318,6 +319,6 @@ C backend 会把标量 std 运算 trait 的显式方法调用直接输出为带�
 - `riddlec` 的 C backend 只输出 C；`clue build` 会严格使用 `CC`，或自动选择能完成 C11 编译和链接的系统 C 编译器来生成本机可执行文件；
 - 逃逸分析会沿结构体、元组和数组字段传播引用来源；字段模式绑定可以单独提升到 GC 堆，只有根绑定或无法静态细分的访问才提升整个存储槽；
 - TODO：数组 `IntoIterator` 当前按索引顺序产出元素；若未来允许自定义数组迭代器乱序移出元素，需要先加入 `MaybeUninit` / `ManuallyDrop` 等价存储和逐槽存活状态，确保剩余元素只析构一次；
-- trait 方法支持对象安全的 `&dyn Trait` / `&mut dyn Trait` 借用对象和拥有所有权的 `dyn Trait` 值；拥有值使用数据指针、方法表和类型专属 drop 槽位，并在 GC / no-GC runtime 下分别使用 `rgc_alloc` / `rgc_free` 或 `riddle_alloc` / `riddle_free`；拥有对象可以重借用为 `&dyn Trait`，父 trait 支持对象向上转型，泛型参数可在满足 trait bound 时转换为拥有对象，数组字面量会逐元素应用转换；跨父 trait 的同名方法拒绝为歧义，非对象安全方法会明确报告原因；`dyn Fn`、`dyn FnMut` 和 `dyn FnOnce` 支持拥有值与借用值，并复用 callable ABI；仍不支持带泛型方法的动态对象、异构可调用值容器、递归匿名函数、匿名函数泛型参数或匿名函数参数模式；
-- `Fn`、`FnMut`、`FnOnce` 是编译器密封能力，用户代码不能手动实现；
+- trait 方法支持对象安全的 `&dyn Trait` / `&mut dyn Trait` 借用对象和拥有所有权的 `dyn Trait` 值；拥有值使用数据指针、方法表和类型专属 drop 槽位，并在 GC / no-GC runtime 下分别使用 `rgc_alloc` / `rgc_free` 或 `riddle_alloc` / `riddle_free`；拥有对象可以重借用为 `&dyn Trait`，父 trait 支持对象向上转型，泛型参数可在满足 trait bound 时转换为拥有对象，数组字面量会逐元素应用转换；跨父 trait 的同名方法拒绝为歧义，非对象安全方法会明确报告原因；`dyn Fn`、`dyn FnMut` 和 `dyn FnOnce` 支持拥有值与借用值，并复用 callable ABI；仍不支持带泛型方法的动态对象或异构可调用值容器；
+- 泛型匿名函数按调用点单态化，支持外层捕获和带显式类型参数的自递归；带泛型方法的动态对象或异构可调用值容器仍未支持；
 - 这是开发中工具链，不保证语法和 ABI 稳定。

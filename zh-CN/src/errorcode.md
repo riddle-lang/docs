@@ -462,7 +462,7 @@ impl Foo for Point {}
 impl Foo for Point {}  // E0047: conflicting implementations
 ```
 
-`impl Fn*` 位置的格式错误也使用本错误码：目前只支持 `Fn`、`FnMut`、`FnOnce` 三种 callable bound，`impl Iterator` 这类非 callable 的 `impl Trait`、缺少 callable 签名或签名不合法的 bound 都会报告 `E0047`。
+callable impl 或 bound 的格式错误也使用本错误码：`Fn`、`FnMut`、`FnOnce` 必须携带 `(参数类型...) -> 返回类型` 调用签名。一般的 `impl Trait` 不要求调用签名。
 
 <a id="e0048"></a>
 ### E0048 — impl 违反孤儿规则
@@ -471,7 +471,7 @@ impl Foo for Point {}  // E0047: conflicting implementations
 use external::{Show, Point};
 impl Show for Point {}  // E0048
 ```
-callable 能力只能由函数和匿名函数实现，用户类型实现 `Fn*` 一类 callable trait 时也报告本错误。
+`Fn`、`FnMut` 和 `FnOnce` 名称由编译器保留，用户不能用这些名称重新声明 trait；用户类型可以为本地类型实现编译器提供的 callable trait，但仍受上述孤儿规则约束。
 
 <a id="e0049"></a>
 ### E0049 — 默认 std 模式下使用内部属性

@@ -84,6 +84,8 @@ impl Show for Widget {
 
 编译器会检查 trait 要求的方法和关联类型是否完整、签名是否匹配。
 
+用户类型还可以用 `impl Fn(参数类型...) -> 返回类型 for Type`、`FnMut` 或 `FnOnce` 实现可调用能力；对应的 `call` receiver 必须依次为 `&self`、`&mut self` 或 `self`。完整示例见[闭包与迭代器](./functional.md#可调用参数与返回值)。
+
 trait impl 可以使用 `where` 子句约束泛型参数：
 
 ```riddle

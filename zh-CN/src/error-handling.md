@@ -23,6 +23,8 @@ fun read_or_zero(text: &str) -> i32 {
 let value = parse_i32("42").unwrap_or(0);
 ```
 
+`Option` 当前提供 `is_some`、`is_none`、`unwrap`、`unwrap_or`、`map`、`and_then` 和 `or`。
+
 Riddle 当前没有 Kotlin 式 `T?` 和 `null`。普通缺失值应建模为 `Option`。
 
 ## Result 表示成功或失败
@@ -44,7 +46,7 @@ fun parse_positive(text: &str) -> Result<i32, &str> {
 }
 ```
 
-`Result` 提供 `is_ok`、`is_err`、`unwrap_or`、`ok` 和 `err`。需要保留错误内容或执行不同恢复逻辑时，优先使用 `match`，不要立即丢弃 `Err`。
+`Result` 提供 `is_ok`、`is_err`、`unwrap`、`unwrap_or`、`map`、`and_then`、`ok` 和 `err`。需要保留错误内容或执行不同恢复逻辑时，优先使用 `match`，不要立即丢弃 `Err`。
 
 Riddle 当前的 `return` 是语句，不能像 Rust 那样直接写成 `None => return Err(...)`；让整个 `match` 产生 `Result` 即可。
 
