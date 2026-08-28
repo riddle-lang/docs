@@ -184,7 +184,7 @@ C backend 对整数回绕、除零、最小值除以 `-1`、移位计数和浮�
 - 用户类型实现 `Fn(参数...) -> 返回类型`、`FnMut` 和 `FnOnce`，并静态调用其 `call` 方法；
 - `impl Type` 固有方法；
 - `self`、`&self`、`&mut self` 接收者；
-- 方法调用 `value.method()`；
+- 方法调用 `value.method()`；方法查找失败时会回退为调用存储在字段里的可调用值（`self.f(x)`，`f` 为闭包、函数项或带 `Fn`/`FnMut` bound 的泛型字段），impl 的 callable bound 由闭包签名结构化满足（`Fn` 值可用于 `FnMut`/`FnOnce` 需求）；
 - 关联函数路径调用 `Type::function(...)`；
 - `Type::Assoc` 关联类型路径；
 - trait impl 合约检查：缺少方法、参数类型、返回类型和缺少关联类型会报错；
@@ -228,9 +228,9 @@ prelude 只直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`No
 - `print!` / `println!` 通过隐藏的标准库输出入口和 `std::fmt::{Debug, Display, Formatter, Result}` 支持字符串、布尔、字符、整数和浮点标量；格式化 trait 不在 prelude 中，底层输出入口不属于用户 API。`Debug` 与 `Display` 都使用 `fmt(&self, formatter: &mut Formatter) -> Result`，字符串和字符的 `Debug` 输出会添加引号并转义；标准派生支持结构体、泛型结构体以及 unit、tuple、named 三类枚举变体，当前包括 `Debug`、`Clone`、`Copy`、`Default`、`Hash`、`PartialEq`、`Eq`、`PartialOrd` 和 `Ord`，并为泛型参数生成相应 bound；枚举 `Default` 要求恰好一个带 `#[default]` 的 unit 变体，排序派生按变体声明顺序和 payload 字典序工作；`Copy` impl 会验证所有字段和 payload，比较派生仍需满足父 trait；`Option`、`Result`、`String`、`Vector`、`HashMap`、`HashSet`、`TreeMap` 和 `TreeSet` 均通过 `Debug` 派生实现格式化；`print!` / `println!` 支持空调用，`format!` 要求字符串字面量并返回 `String`，`panic!()` 使用 `explicit panic`，`panic!(...)` 在终止前格式化消息；四个宏都支持字符串字面量、多个 `{}` / `{:?}` 参数、尾随逗号以及 `{{` / `}}`，并在编译期校验格式串；参数按从左到右的顺序分别通过 `Display` / `Debug` 格式化；索引参数、命名参数和其他格式说明符尚未实现；
 - `assert!`、`assert_eq!`、`assert_ne!` 及对应的 `debug_assert*` 宏复用 `panic!`；比较断言只求值两侧一次并显示 `Debug` 值，自定义消息仅在失败路径求值。`todo!`、`unimplemented!` 和 `unreachable!` 返回 `!` 并保留调用位置；当前所有构建都会执行 debug assertion；
 - `std::string::String` 提供 `new`、`from_str`、`as_str`、`len`、`capacity`、`is_empty`、`push_str`、`push_char` 和 `clear`；同一模块按 Rust 风格为 `str` 提供 `len`、`is_empty`、`as_bytes` 和按 Unicode `char` 遍历的 `StrIter`；
-- `std::vector::Vector<T>` 提供 `new`、`len`、`capacity`、`is_empty`、`push`、`pop`、`get`、`get_mut`、`swap`、`clear`、`as_slice`、读写下标和按值迭代；下标越界调用 `panic`，缓冲区通过运行时 `rgc_realloc`、`rgc_free` 管理；
+- `std::vector::Vector<T>` 提供 `new`、`len`、`capacity`、`is_empty`、`push`、`pop`、`get`、`get_mut`、`swap`、`clear`、`as_slice`、读写下标和按值迭代； `Vector<T>` 另提供 `from_iterator`，可把任意迭代器收集为向量；下标越界调用 `panic`，缓冲区通过运行时 `rgc_realloc`、`rgc_free` 管理；
 - `Vector<T>` 会拒绝零大小元素并检查容量乘法溢出；原始指针目前不能比较空值，因此尚不能在标准库内处理 C 分配失败；
-- `std::iter::{Iterator, IntoIterator}`；
+- `std::iter::{Iterator, IntoIterator}`；`Iterator` 提供默认方法 `count`、`nth`、`fold`、`for_each`、`all`、`any`、`find`、`position`，以及惰性的 `map` / `filter`（通过闭包字段适配器实现，可链式组合并支持 `for` 遍历）；`std::iter` 另提供急切求值的 `map_into` / `filter_into`（返回 `Vector`）与适配器构造函数 `enumerate` / `take` / `zip`；`Vector::from_iterator` 可收集任意迭代器；`DoubleEndedIterator` 提供 `next_back`，切片迭代器 `SliceIter` 支持从尾部遍历；
 - `std::slice::{SliceIter, SliceIterMut}`，并为 `[T]` 提供长度、边界检查访问、原始指针访问和借用迭代；
 - `std::array` 中的按值、共享借用和可变借用数组迭代器；
 - `std::ops::{Range, range(start, end)}`；
@@ -239,10 +239,11 @@ prelude 只直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`No
 - `std::cmp::{Ordering, PartialEq, Eq, PartialOrd, Ord}`；
 - `std::ops` 下的算术、位运算、移位、复合赋值以及 `Index` / `IndexMut` trait，均有可调用的必需方法；这些 trait 由对应 `#[lang = "..."]` 标记，用户类型的下标操作静态分派到 `index` / `index_mut`。
 - `std::default::Default` 为标量、`Option<T>`、`String` 和 `Vector<T>` 提供默认值；`Default::default()` 支持按期望类型静态选择 impl；
-- `std::convert::Into<T>` 是 `?` 错误传播使用的错误转换协议；
+- `std::convert::Into<T>` 是 `?` 错误传播使用的错误转换协议；`std::convert::From<T>` 已提供，`?` 在没有 `Into` impl 时回退查找 `From` impl（Rust 风格错误链路），且 `?` 同样支持 `Option<T>` 操作数（在返回 `Option` 的函数中把 `None` 提前返回）；
 - `std::hash::Hash` 通过共享借用为标量提供确定性的 `usize` 哈希值；
-- `std::collections::{TreeMap, TreeSet}` 使用红黑树，键要求实现 `Ord`；`std::collections::{HashMap, HashSet}` 使用开放寻址哈希表、线性探测和负载扩容，键要求实现 `Hash + Eq`；对应实现模块位于 `std::collections::{tree_map, tree_set, hash_map, hash_set}`；
-- `std::parse::parse_i32` 提供十进制 `i32` 解析；`std::time::time_now` 转发到 C `time`。
+- `std::collections::{TreeMap, TreeSet}` 使用红黑树，键要求实现 `Ord`；`std::collections::{HashMap, HashSet}` 使用开放寻址哈希表、线性探测和负载扩容，键要求实现 `Hash + Eq`；四类集合都提供 `remove`：HashMap 采用线性探测的后移删除（backward-shift deletion），TreeMap 采用带删除修复（delete fixup）的 CLRS 红黑树删除并压缩 arena 槽位；对应实现模块位于 `std::collections::{tree_map, tree_set, hash_map, hash_set}`；
+- `std::parse::parse_i32` 提供十进制 `i32` 解析；`std::time::time_now` 转发到 C `time`；
+- `std::fs::FsFile` 通过运行时提供的 `riddle_fs_*` 薄包装（避免与 `<stdio.h>` 原型冲突）访问 C `stdio`：`open` / `create` / `append` / `read` / `write` / `flush` / `read_to_string`，`Drop` 保证关闭句柄；`std::fs::{read_to_string, write}` 提供整文件便捷读写；`?` 可直接在这些 `Result<FsError>` API 间传播；
 
 `Default`、`Hash`、标量格式化和基础集合/解析/时间 API 已经具备可执行行为；`parse_i32` 会拒绝空串、非法字符和超出 `i32` 范围的输入。
 
