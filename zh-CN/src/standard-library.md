@@ -14,7 +14,7 @@ Riddle 会自动加载随编译器附带的标准库。prelude 提供日常使�
 - 标准 `Debug`、`Clone`、`Copy`、`Default`、`Hash`、`PartialEq`、`Eq`、`PartialOrd`、`Ord` 派生；
 - `Iterator` 与 `IntoIterator` 协议。
 
-函数式标准宏不属于 prelude，也不需要导入。当前包括 `format!`、`panic!`、`print!`、`println!`，断言宏 `assert!`、`assert_eq!`、`assert_ne!`、`debug_assert!`、`debug_assert_eq!`、`debug_assert_ne!`，以及 `todo!`、`unimplemented!` 和 `unreachable!`。
+函数式标准宏不属于 prelude，也不需要导入。当前包括 `format!`、`panic!`、`print!`、`println!`，断言宏 `assert!`、`assert_eq!`、`assert_ne!`、`debug_assert!`、`debug_assert_eq!`、`debug_assert_ne!`，以及 `todo!`、`unimplemented!`、`unreachable!` 和向量字面量 `vec!`。
 
 同名并不表示与 Rust 标准库具有完整相同的 API。应以本页和[当前工具链状态](./compiler-status.md)列出的实现为准。
 

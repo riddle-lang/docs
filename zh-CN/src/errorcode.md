@@ -165,6 +165,8 @@ let same = Point { x: 1 } == Point { x: 2 };  // E0036
 ```
 缺少 `Index` / `IndexMut` trait（例如 `--no-std` 场景下没有定义它们）时也报告本错误。
 
+注意：同点（相同指向类型与可变性）原始指针的 `==` / `!=` 是内建按地址比较，不需要 `PartialEq` 实现；`p == 0usize as *const T` 即空指针检查。
+
 <a id="e0037"></a>
 ### E0037 — impl where 子句违反 Paterson condition
 trait impl 的 `where` 约束不能和被实现类型一样大或更大，否则 trait 求解可能无限递归。

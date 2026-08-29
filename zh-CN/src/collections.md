@@ -55,11 +55,23 @@ fun sum() -> i32 {
 }
 ```
 
+`vec![]` 宏提供字面量式的构造。元素列表形式逐个 `push`，元素按值移动进向量；`vec![elem; count]` 重复形式要求元素实现 `Clone`，为每个槽位克隆一份；空 `vec![]` 的元素类型从绑定注解或后续用法推断：
+
+```riddle
+fun demos() {
+    let list = vec![1, 2, 3];
+    let zeros = vec![0; 8usize];
+    let names = vec![String::from_str("a"), String::from_str("b")];
+    let empty: Vector<i32> = vec![];
+}
+```
+
 常用方法：
 
 | 方法 | 作用 |
 |------|------|
 | `new()` | 创建空向量 |
+| `from_elem(value, count)` | 创建含 `count` 个 `value` 克隆的向量（要求 `T: Clone`），`vec![value; count]` 的底层实现 |
 | `len()` / `capacity()` / `is_empty()` | 长度、容量、是否为空 |
 | `push(value)` / `pop()` | 末尾追加 / 取出末尾元素 |
 | `get(index)` / `get_mut(index)` | 返回 `Option<&T>` / `Option<&mut T>`，越界返回 `None` |
