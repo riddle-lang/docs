@@ -127,15 +127,21 @@ lambda_generic_params = "<" lambda_generic_param ("," lambda_generic_param)* ">"
 lambda_generic_param = ident (":" generic_bound ("+" generic_bound)*)?;
 lambda_param = pattern (":" ty)?;
 
+// 方括号 lambda：`[it -> it * 2]`。判别规则：`[` 组内嵌套深度 0 处出现 `->`
+// 即为 lambda，否则为数组字面量。`expr [params -> body]`（后缀位置）表示
+// 以该 lambda 为实参调用 `expr`（通常是方法，如 `values.map [v -> v * 2]`）。
+bracket_lambda_expr = "move"? "[" bracket_lambda_body "]";
+bracket_lambda_body = (lambda_param ("," lambda_param)*)? "->" expression;
+
 unary = prefix_op unary | postfix;
 
-postfix = primary ( "::" "<" type_arg_list ">" "(" arg_list ")" | "(" arg_list ")" | "." (ident | number) | "[" expression "]" | struct_expr_fields | "::" "<" type_arg_list ">" struct_expr_fields | "." ident "(" arg_list ")" | "?" )*;
+postfix = primary ( "::" "<" type_arg_list ">" "(" arg_list ")" | "(" arg_list ")" | "." (ident | number) | "[" (expression | bracket_lambda_body) "]" | struct_expr_fields | "::" "<" type_arg_list ">" struct_expr_fields | "." ident "(" arg_list ")" | "?" )*;
 
 arg_list = (expression ("," expression)*)?;
 
 type_arg_list = type_list;
 
-primary = literal | macro_call | path | array_expr | tuple_expr | lambda_expr | "(" expression? ")";
+primary = literal | macro_call | path | array_expr | tuple_expr | lambda_expr | bracket_lambda_expr | "(" expression? ")";
 
 macro_call = path "!" token_tree;
 token_tree = "(" balanced_tokens ")" | "[" balanced_tokens "]" | "{" balanced_tokens "}";

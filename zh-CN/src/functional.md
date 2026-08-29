@@ -19,6 +19,41 @@ fun main() -> i32 {
 
 省略的参数和返回类型会在当前函数体内做单态推断。无法确定类型时需要显式标注，例如 `fun(x: i32) -> i32 { x }`。每个匿名函数表达式都有独立的具体类型，即使两个表达式的参数和返回类型完全相同，它们也不会自动变成同一种类型。
 
+## 方括号 lambda
+
+单个表达式就能写完的匿名函数可以用方括号形式 `[参数 -> 体]`，参数和返回类型同样按期望签名推断。单参惯用名为 `it`（普通标识符，不是保留字，也可以换成任意名字）：
+
+```riddle
+fun apply(f: impl Fn(i32) -> i32, value: i32) -> i32 {
+    f(value)
+}
+
+fun main() -> i32 {
+    let inc = [it -> it + 1];
+    let doubled = [it -> it * 2](21);
+    apply(inc, 41) + doubled
+}
+```
+
+多参数、类型标注、解构参数与按值捕获的写法：
+
+```riddle
+let sum = [acc, v -> acc + v];
+let flagged = [it: &i32 -> *it > 3];
+let first = [(left, _) -> left];
+let offset = move [it -> base + it];
+```
+
+零参 lambda 写作 `[ -> 体]`（空的 `[]` 仍是空数组字面量）。多语句体用块表达式：`[it -> { let sq = it * it; sq }]`。方括号 lambda 不能声明泛型参数或 `where` 子句，这些场景继续使用 `fun(...)`。
+
+判别规则：`[` 组内嵌套深度 0 处出现 `->` 即为匿名函数，否则是数组字面量，因此 `[1, 2, 3]` 与 `[v]` 仍是数组。后缀位置同样适用：`expr [参数 -> 体]` 表示以该 lambda 为实参调用 `expr`，最常见的用法是方法链：
+
+```riddle
+let chained = Counter { index: 0usize, limit: 5usize }
+    .map [v -> v + 1i32]
+    .filter [it -> *it > 3i32];
+```
+
 匿名函数支持泛型参数、bound、`where` 子句和参数解构，并在每个调用点单态化：
 
 ```riddle
