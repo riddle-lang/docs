@@ -36,7 +36,7 @@ fun main() {
 }
 ```
 
-格式宏当前支持多个 `{}` / `{:?}`、尾随逗号以及 `{{` / `}}`。索引参数、命名参数和其他格式说明符尚未实现。
+格式宏当前支持多个 `{}` / `{:?}`、`{0}` 位置参数（可重复引用任意参数）、`{name}` 命名捕获（隐式读取调用处的同名局部变量）、尾随逗号以及 `{{` / `}}`，格式串在编译期校验。宽度、对齐和填充等其他格式说明符尚未实现。
 
 `print!` / `println!` 通过隐藏的标准库输出入口和 `std::fmt::{Debug, Display, Formatter, Result}` 支持字符串、布尔、字符、整数和浮点标量；`Display` 输出 UTF-8 字符，浮点数固定输出 6 位小数。字符串和字符的 `Debug` 输出会添加引号并转义 `\\`、`\"`、`\n`、`\r`、`\t`、`\0`。格式化 trait 不在 prelude 中，底层输出入口不属于用户 API。
 
@@ -63,20 +63,20 @@ enum State {
 
 ## 解析与时间
 
-当前标准库提供两个小型入口：
+`std::parse` 提供一组溢出安全的解析入口，`std::time` 提供时间戳与休眠：
 
 ```riddle
 use std::parse::parse_i32;
-use std::time::time_now;
+use std::time::{sleep, Duration, time_now};
 
 fun main() {
     let value = parse_i32("42").unwrap_or(0);
-    let now = time_now();
-    println!("value={} now={}", value, now);
+    println!("value={} now={}", value, time_now());
+    sleep(Duration::from_millis(50));
 }
 ```
 
-`parse_i32` 只解析十进制 `i32`；空串、单独的负号、非法字符和超出 `i32` 范围的输入返回 `None`。`time_now` 转发到 C `time` 并返回 `i64`。
+`parse_i32` / `parse_i64` / `parse_u64` / `parse_usize` 只解析十进制；空串、单独的负号、非法字符和超出目标范围的输入返回 `None`，`parse_with_radix` 支持 2–36 进制。`time_now` 转发到 C `time` 并返回 `i64`；`Duration` 提供 `from_secs` / `from_millis` / `as_secs` / `as_millis`，`sleep` 转发到运行时垫片。
 
 ## 进程参数
 
@@ -88,25 +88,28 @@ fun main() {
 
 | 模块 | 内容 |
 |------|------|
-| `std::option::Option<T>` | `is_some`、`is_none`、`unwrap_or`、`or` |
-| `std::result::Result<T, E>` | `is_ok`、`is_err`、`unwrap_or`、`ok`、`err` |
+| `std::option::Option<T>` | `is_some`、`is_none`、`unwrap`、`expect`、`unwrap_or`、`unwrap_or_else`、`map`、`map_or`、`and_then`、`and`、`or`、`or_else` |
+| `std::result::Result<T, E>` | `is_ok`、`is_err`、`unwrap`、`expect`、`unwrap_or`、`unwrap_or_else`、`map`、`map_or`、`map_err`、`and_then`、`and`、`or`、`ok`、`err` |
 | `std::ffi::OsString` | `new`、`from_str`、`as_encoded_bytes`、`into_string`、`len`、`is_empty` |
 | `std::env` | `args_os`、`args` |
-| `std::string::String` | `new`、`from_str`、`as_str`、`len`、`capacity`、`is_empty`、`push_str`、`clear` |
-| `std::str`（impl） | `len`、`is_empty`、`as_bytes`，以及按 Unicode `char` 遍历的 `StrIter` |
-| `std::vector::Vector<T>` | `new`、`len`、`capacity`、`is_empty`、`push`、`pop`、`get`、`get_mut`、`swap`、`clear`、`as_slice`、读写下标和按值迭代 |
-| `std::collections` | `HashMap`、`HashSet`（键需 `Hash + Eq`）、`TreeMap`、`TreeSet`（键需 `Ord`） |
-| `std::iter` | `Iterator`、`IntoIterator` 协议 |
+| `std::string::String` | `new`、`from_str`、`as_str`、`len`、`capacity`、`is_empty`、`push_str`、`push_char`、`clear`、`split`、`replace`、`to_ascii_uppercase`、`to_ascii_lowercase` |
+| `std::str`（impl） | `len`、`is_empty`、`as_bytes`、`contains`、`find`、`starts_with`、`ends_with`、`slice`、`trim`、`split`、`replace`、`to_ascii_uppercase`、`to_ascii_lowercase`，以及按 Unicode `char` 遍历的 `StrIter` |
+| `std::vector::Vector<T>` | `new`、`len`、`capacity`、`is_empty`、`push`、`pop`、`insert`、`remove`、`get`、`get_mut`、`swap`、`sort`、`contains`、`retain`、`clear`、`as_slice`、`from_iterator`、`from_elem`、读写下标和按值迭代 |
+| `std::collections` | `HashMap`、`HashSet`（键需 `Hash + Eq`）、`TreeMap`、`TreeSet`（键需 `Ord`），四类集合均提供 `remove`，`HashMap` 另有 `get_or_insert` |
+| `std::iter` | `Iterator`、`IntoIterator` 协议；`Iterator` 的默认方法含 `map`、`filter`、`chain`、`inspect`、`count`、`nth`、`fold`、`for_each`、`all`、`any`、`find`、`position` 和 `collect`；`std::iter` 另提供急切的 `map_into` / `filter_into`，适配器 `enumerate` / `take` / `skip` / `take_while` / `skip_while` / `zip`，`min` / `max`，以及 `DoubleEndedIterator` |
 | `std::slice` | `SliceIter`、`SliceIterMut`，以及 `[T]` 的长度、边界检查访问、原始指针访问和借用迭代 |
 | `std::array` | 按值、共享借用和可变借用数组迭代器 |
-| `std::ops` | `Range`、`range(start, end)`、`Drop`，以及算术、位运算、移位、复合赋值和 `Index` / `IndexMut` trait |
+| `std::fs` | `FsFile`（`open`、`create`、`append`、`read`、`write`、`flush`、`read_to_string`）、`exists`、`metadata`、`read_dir`，以及整文件 `read_to_string` / `write` |
+| `std::random` | `random_u32`、`random_u64`、`random_bool`、`random_below` |
+| `std::ops` | `Range`、`RangeInclusive`、`range(start, end)`、`range_inclusive(start, end)`、`Drop`，以及算术、位运算、移位、复合赋值和 `Index` / `IndexMut` trait |
 | `std::marker` | `Copy` |
 | `std::clone` | `Clone` |
 | `std::cmp` | `Ordering`、`PartialEq`、`Eq`、`PartialOrd`、`Ord` |
 | `std::default` | `Default`，为标量、`Option<T>`、`String` 和 `Vector<T>` 提供默认值 |
-| `std::convert` | `Into<T>`，`?` 错误传播使用的错误转换协议 |
+| `std::convert` | `Into<T>` 与 `From<T>`，`?` 错误传播使用的错误转换协议 |
 | `std::hash` | `Hash`，通过共享借用为标量提供确定性的 `usize` 哈希值 |
 | `std::fmt` / `std::io` | `Debug`、`Display`、`Formatter` 和底层输出函数 |
-| `std::parse` / `std::time` | `parse_i32`、`time_now` |
+| `std::parse` | `parse_i32`、`parse_i64`、`parse_u64`、`parse_usize`、`parse_with_radix` |
+| `std::time` | `time_now`、`Duration`（`from_secs`、`from_millis`、`as_secs`、`as_millis`）和 `sleep` |
 
 `Vector<T>` 会拒绝零大小元素并检查容量乘法溢出；下标越界调用 `panic`。错误传播的完整规则见[错误处理](./error-handling.md)。

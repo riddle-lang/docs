@@ -101,7 +101,7 @@ expr_stmt = expr_without_block ";" | expr_with_block ";"?;
 
 // == expression ==
 
-expression = expr_with_block | expr_without_block;
+expression = expr_with_block | expr_without_block | range_expr;
 
 expr_with_block = block | if_expr | while_expr | loop_expr | for_expr | match_expr | unsafe_expr;
 
@@ -121,6 +121,9 @@ match_arm = attribute* pattern ("if" expression)? "=>" expression;
 unsafe_expr = "unsafe" block;
 
 expr_without_block = unary (("as" ty) | (binop unary))*;
+
+// 区间表达式：右结合，优先级低于 `||`；`for` 头部与语句表达式位置可用
+range_expr = expr_without_block (".." | "..=") expr_without_block;
 
 lambda_expr = "move"? "fun" lambda_generic_params? "(" (lambda_param ("," lambda_param)*)? ")" ("->" ty)? where_clause? block;
 lambda_generic_params = "<" lambda_generic_param ("," lambda_generic_param)* ">";
@@ -186,6 +189,9 @@ enum_pattern = path | path "(" (pattern ("," pattern)* ","?)? ")" | path "{" (fi
 //   ==  !=         left-assoc        (lbp=6,  rbp=7)
 //   &&             left-assoc        (lbp=4,  rbp=5)
 //   ||             left-assoc        (lbp=2,  rbp=3)
+//
+// Range:
+//   .. ..=         right-assoc       (lbp=1,  rbp=2)
 //
 // In `if`, `while`, `for`, and `match` heads, struct expressions are disabled so
 // `if Foo { ... }` keeps parsing `{ ... }` as the control-flow block.

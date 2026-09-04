@@ -174,7 +174,7 @@ fun sum_to_three() -> i32 {
 }
 ```
 
-`std::ops::range(start, end)` 产生半开区间 `[start, end)`，使用前需要显式导入。固定长度数组、`Vector`、切片和 `&str` 也都可以直接用于 `for`；如何为自定义类型实现 `IntoIterator`，见[闭包与迭代器](./functional.md)。
+`std::ops::range(start, end)` 产生半开区间 `[start, end)`，使用前需要显式导入。更常见的是直接写区间表达式：`for i in 0..3` 等价于 `for i in range(0, 3)`；`a..b` 脱糖为 `std::ops::range(a, b)`，`a..=b` 脱糖为 `range_inclusive(a, b)`，都不需要导入。固定长度数组、`Vector`、切片和 `&str` 也都可以直接用于 `for`；如何为自定义类型实现 `IntoIterator`，见[闭包与迭代器](./functional.md)。
 
 循环头不只是单个变量名，可以是任何不可反驳模式，遍历时直接解构元素：
 
