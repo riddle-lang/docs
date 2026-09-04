@@ -174,3 +174,13 @@ const GREETING: &str = "hello";
 ```
 
 `const` 可以出现在顶层模块和 `impl` 块中。与 `let` 不同，`const` 的值在编译期确定，不能省略类型标注。
+
+整数常量初始化式支持算术、比较、位运算、一元负号/取反、`as` 转换以及引用其他常量（初始化循环会被拒绝），并通过编译期求值得出具体值。求值后的常量可以用作数组类型长度、数组重复长度和 const 泛型实参：
+
+```riddle
+const WIDTH: usize = 8;
+const HEIGHT: usize = WIDTH / 2;
+
+let row: [i32; WIDTH] = [0; WIDTH];
+let grid: [i32; 32] = [0; WIDTH * HEIGHT];
+```

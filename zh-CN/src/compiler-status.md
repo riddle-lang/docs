@@ -22,7 +22,7 @@ Riddle 仍处于开发阶段。本页记录当前仓库已经实现并被测试�
 riddlec [--verbose] [--no-std] [--backend c] [--target <triple>] [--output <file>] <file>...
 ```
 
-`--backend c` 会生成调用 `rgc` ABI 的 C 代码；如需可执行文件，使用本机 `cc`、`gcc` 或 `clang` 同时编译生成结果与发行包附带的 `runtime.c`。程序引用进程参数（`std::env` 的 `args()` / `args_os()`，即 `argc`/`argv`）时还需链接 `args_runtime.c`；生成代码的头部注释会给出完整链接命令。`clue build` 会自动完成这一步，不依赖 Boehm GC。
+`--backend c` 会生成调用 `rgc` ABI 的 C 代码；如需可执行文件，使用本机 `cc`、`gcc` 或 `clang` 同时编译生成结果与发行包附带的 `runtime.c` 和 `args_runtime.c`（C 入口 `main` 会无条件初始化进程参数，因此 `std::env` 的 `args()` / `args_os()` 在任何包中调用都可用）；生成代码的头部注释会给出完整链接命令。`clue build` 会自动完成这一步，不依赖 Boehm GC。多个输入文件会作为一个包合并编译，文件之间可以直接引用彼此的顶层条目。
 
 `riddle fmt` 提供源码格式化和 `--check` 检查，LSP 格式化请求与该命令共享实现。
 
@@ -319,7 +319,7 @@ C backend 会把标量 std 运算 trait 的显式方法调用直接输出为带�
 ## 当前限制
 
 - 标量类型限于 C11 可移植表示：`i128`、`u128`、`f16`、`f128` 在词法上可写，但类型检查会拒绝并给出诊断，语义上不存在这些宽类型；
-- 进程参数 `std::env::args()` / `args_os()` 需要链接 `args_runtime.c`（见上文编译流程）；不引用 `argc`/`argv` 的程序不需要它；
+- 进程参数 `std::env::args()` / `args_os()` 需要链接 `args_runtime.c`（见上文编译流程）；C 入口 `main` 无条件调用 `riddle_args_init`，因此参数在任意包中使用都可用；
 - 当前定位为单线程语言：线程 / 互斥锁 / 原子变量 / `async` / `await` / 网络尚未实现；开区间范围（`a..` / `..b`）、范围模式（`match` 中的 `a..=b`）、循环标签、`Rc`/`Arc`/`Cell`/`RefCell` 等智能指针与内部可变性也尚未实现；解构和守卫目前统一由 `match` 表达；
 - 数字解析不接受 `_` 分隔符、十六进制浮点或前导 `+`；
 - 泛型目前偏向单态化，尚未覆盖完整 Rust 泛型能力；
