@@ -1,6 +1,6 @@
 # 泛型
 
-泛型让同一份逻辑适用于多种类型。Riddle 的泛型通过静态单态化编译：每个用到的具体类型组合都会在编译期生成独立的实现，运行时没有类型信息，也不存在动态分派。
+泛型让同一份逻辑适用于多种类型。Riddle 的泛型通过静态单态化编译：每个用到的具体类型组合都会在编译期生成独立的实现，泛型本身在运行时没有类型信息；动态分派只存在于显式使用 `dyn Trait` 对象的场合（见[Trait](./traits.md)）。
 
 本章统一介绍函数、类型和 impl 中的泛型写法；trait bound 的完整规则见[Trait](./traits.md)。
 
@@ -104,8 +104,8 @@ let b = Box::<i32> { value: 1 };
 固有 impl 可以带类型参数和 const 参数：
 
 ```riddle
-impl<T> Box<T> {
-    fun get(&self) -> T {
+impl<T: Copy> Box<T> {
+    fun get(self) -> T {
         self.value
     }
 }

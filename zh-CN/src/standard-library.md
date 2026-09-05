@@ -36,9 +36,9 @@ fun main() {
 }
 ```
 
-格式宏当前支持多个 `{}` / `{:?}`、`{0}` 位置参数（可重复引用任意参数）、`{name}` 命名捕获（隐式读取调用处的同名局部变量）、尾随逗号以及 `{{` / `}}`，格式串在编译期校验。宽度、对齐和填充等其他格式说明符尚未实现。
+格式宏当前支持多个 `{}` / `{:?}`、`{0}` 位置参数（可重复引用任意参数）、`{name}` 命名捕获（隐式读取调用处的同名局部变量）、尾随逗号以及 `{{` / `}}`；格式串的语法、说明符合法性与命名捕获的存在性会在编译期校验，但位置索引是否越界、实参数量是否足够，以及未实现的宽度、对齐和填充说明符不会在编译期拒绝——例如 `{1}`、参数不足或 `{:>5}` 会静默通过并在运行时输出空内容。
 
-`print!` / `println!` 通过隐藏的标准库输出入口和 `std::fmt::{Debug, Display, Formatter, Result}` 支持字符串、布尔、字符、整数和浮点标量；`Display` 输出 UTF-8 字符，浮点数固定输出 6 位小数。字符串和字符的 `Debug` 输出会添加引号并转义 `\\`、`\"`、`\n`、`\r`、`\t`、`\0`。格式化 trait 不在 prelude 中，底层输出入口不属于用户 API。
+`print!` / `println!` 通过隐藏的标准库输出入口和 `std::fmt::{Debug, Display, Formatter, Result}` 支持字符串、布尔、字符、整数和浮点标量；`Display` 输出 UTF-8 字符，浮点数固定输出 6 位小数。字符串和字符的 `Debug` 输出会添加引号并转义 `\\`、`\n`、`\r`、`\t`、`\0`；字符串转义双引号 `\"`，字符转义单引号 `\'`。格式化 trait 不在 prelude 中，底层输出入口不属于用户 API。
 
 `panic!()` 使用消息 `explicit panic`；`panic!("value={}", value)` 与其他格式宏共享编译期格式串检查，并保留宏调用位置用于 panic 诊断。底层 `std::panic` 模块及其 `panic(message)` 入口仅供标准库和编译器使用，不会进入普通补全。
 
@@ -89,12 +89,12 @@ fun main() {
 | 模块 | 内容 |
 |------|------|
 | `std::option::Option<T>` | `is_some`、`is_none`、`unwrap`、`expect`、`unwrap_or`、`unwrap_or_else`、`map`、`map_or`、`and_then`、`and`、`or`、`or_else` |
-| `std::result::Result<T, E>` | `is_ok`、`is_err`、`unwrap`、`expect`、`unwrap_or`、`unwrap_or_else`、`map`、`map_or`、`map_err`、`and_then`、`and`、`or`、`ok`、`err` |
-| `std::ffi::OsString` | `new`、`from_str`、`as_encoded_bytes`、`into_string`、`len`、`is_empty` |
+| `std::result::Result<T, E>` | `is_ok`、`is_err`、`unwrap`、`expect`、`unwrap_or`、`unwrap_or_else`、`map`、`map_or`、`map_err`、`and_then`、`and`、`ok`、`err` |
+| `std::ffi::OsString` | `new`、`from_str`、`as_encoded_bytes`、`from_encoded_bytes_unchecked`（unsafe）、`into_string`、`len`、`is_empty` |
 | `std::env` | `args_os`、`args` |
-| `std::string::String` | `new`、`from_str`、`as_str`、`len`、`capacity`、`is_empty`、`push_str`、`push_char`、`clear`、`split`、`replace`、`to_ascii_uppercase`、`to_ascii_lowercase` |
+| `std::string::String` | `new`、`from_str`、`from_utf8`、`as_str`、`as_bytes`、`len`、`capacity`、`is_empty`、`push_str`、`push_char`、`clear`、`slice`、`trim`、`contains`、`find`、`starts_with`、`ends_with`、`split`、`replace`、`to_ascii_uppercase`、`to_ascii_lowercase` |
 | `std::str`（impl） | `len`、`is_empty`、`as_bytes`、`contains`、`find`、`starts_with`、`ends_with`、`slice`、`trim`、`split`、`replace`、`to_ascii_uppercase`、`to_ascii_lowercase`，以及按 Unicode `char` 遍历的 `StrIter` |
-| `std::vector::Vector<T>` | `new`、`len`、`capacity`、`is_empty`、`push`、`pop`、`insert`、`remove`、`get`、`get_mut`、`swap`、`sort`、`contains`、`retain`、`clear`、`as_slice`、`from_iterator`、`from_elem`、读写下标和按值迭代 |
+| `std::vector::Vector<T>` | `new`、`len`、`capacity`、`is_empty`、`push`、`pop`、`insert`、`remove`、`get`、`get_mut`、`swap`、`sort`、`contains`、`retain`、`clear`、`as_slice`、`as_ptr`、`iter`、`iter_mut`、`from_iterator`、`from_elem`、读写下标和按值迭代 |
 | `std::collections` | `HashMap`、`HashSet`（键需 `Hash + Eq`）、`TreeMap`、`TreeSet`（键需 `Ord`），四类集合均提供 `remove`，`HashMap` 另有 `get_or_insert` |
 | `std::iter` | `Iterator`、`IntoIterator` 协议；`Iterator` 的默认方法含 `map`、`filter`、`chain`、`inspect`、`count`、`nth`、`fold`、`for_each`、`all`、`any`、`find`、`position` 和 `collect`；`std::iter` 另提供急切的 `map_into` / `filter_into`，适配器 `enumerate` / `take` / `skip` / `take_while` / `skip_while` / `zip`，`min` / `max`，以及 `DoubleEndedIterator` |
 | `std::slice` | `SliceIter`、`SliceIterMut`，以及 `[T]` 的长度、边界检查访问、原始指针访问和借用迭代 |

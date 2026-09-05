@@ -47,10 +47,10 @@ clue new hello
 cargo run -p riddlec -- --backend c --output hello.c hello/src/main.rid
 ```
 
-`riddlec` 只生成包含 `rgc` ABI 调用的 C 源码，不再内嵌具体 GC。手动构建时需要同时编译一个运行时实现；仓库中的默认实现位于 `crates/gc/src/runtime.c`：
+`riddlec` 只生成包含 `rgc` ABI 调用的 C 源码，不再内嵌具体 GC。手动构建时需要同时编译一个运行时实现；仓库中的默认实现位于 `crates/gc/src/runtime.c`，进程参数运行时位于 `crates/gc/src/args_runtime.c`（生成的 C 入口会无条件初始化进程参数）：
 
 ```bash
-cc hello.c crates/gc/src/runtime.c -o hello
+cc hello.c crates/gc/src/runtime.c crates/gc/src/args_runtime.c -o hello
 ```
 
 `clue build` 会自动选择并编译默认运行时，也可以通过 `Clue.toml` 的 `[runtime].source` 使用自定义 GC 或分配器。
@@ -193,7 +193,7 @@ MIR 后端通过统一的 `Backend` trait 实现：
 
 ```rust
 trait Backend {
-    fn compile(&mut self, module: &Module) -> Result<String, Error>;
+    fn compile(&mut self, module: &Module) -> Result<String, Self::Error>;
     fn name(&self) -> &'static str;
 }
 ```

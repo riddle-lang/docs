@@ -2,26 +2,9 @@
 
 函数式能力在 Riddle 中表现为两类：匿名函数（闭包）让行为可以按值传递，`Iterator` / `IntoIterator` 协议让遍历可以统一。这两者都依赖泛型与 trait，因此本章放在[泛型、Trait 与模块](./data-and-abstraction.md)之后阅读。
 
-## 匿名函数
+## 匿名函数（方括号 lambda）
 
-匿名函数使用 `fun(...) { ... }`，可以保存到变量或作为参数传递：
-
-```riddle
-fun apply(f: impl Fn(i32) -> i32, value: i32) -> i32 {
-    f(value)
-}
-
-fun main() -> i32 {
-    let inc = fun(x) { x + 1 };
-    apply(inc, 41)
-}
-```
-
-省略的参数和返回类型会在当前函数体内做单态推断。无法确定类型时需要显式标注，例如 `fun(x: i32) -> i32 { x }`。每个匿名函数表达式都有独立的具体类型，即使两个表达式的参数和返回类型完全相同，它们也不会自动变成同一种类型。
-
-## 方括号 lambda
-
-单个表达式就能写完的匿名函数可以用方括号形式 `[参数 -> 体]`，参数和返回类型同样按期望签名推断。单参惯用名为 `it`（普通标识符，不是保留字，也可以换成任意名字）：
+匿名函数使用方括号形式 `[参数 -> 体]`，可以保存到变量或作为参数传递。参数类型和返回类型按期望的可调用签名推断，无法推断时再显式标注参数类型。单参惯用名为 `it`（普通标识符，不是保留字，也可以换成任意名字）：
 
 ```riddle
 fun apply(f: impl Fn(i32) -> i32, value: i32) -> i32 {
@@ -35,6 +18,8 @@ fun main() -> i32 {
 }
 ```
 
+无法从期望签名推断参数类型时需要显式标注，例如 `[x: i32 -> x]`；返回类型始终推断，不能标注。每个匿名函数表达式都有独立的具体类型，即使两个表达式的参数和返回类型完全相同，它们也不会自动变成同一种类型。
+
 多参数、类型标注、解构参数与按值捕获的写法：
 
 ```riddle
@@ -44,7 +29,7 @@ let first = [(left, _) -> left];
 let offset = move [it -> base + it];
 ```
 
-零参 lambda 写作 `[ -> 体]`（空的 `[]` 仍是空数组字面量）。多语句体用块表达式：`[it -> { let sq = it * it; sq }]`。方括号 lambda 不能声明泛型参数或 `where` 子句，这些场景继续使用 `fun(...)`。
+零参 lambda 写作 `[ -> 体]`（空的 `[]` 仍是空数组字面量）。多语句体用块表达式：`[it -> { let sq = it * it; sq }]`。匿名函数不能声明泛型参数或 `where` 子句，也不能标注返回类型；需要这些能力时定义具名函数。
 
 判别规则：`[` 组内嵌套深度 0 处出现 `->` 即为匿名函数，否则是数组字面量，因此 `[1, 2, 3]` 与 `[v]` 仍是数组。后缀位置同样适用：`expr [参数 -> 体]` 表示以该 lambda 为实参调用 `expr`，最常见的用法是方法链：
 
@@ -54,24 +39,16 @@ let chained = Counter { index: 0usize, limit: 5usize }
     .filter [it -> *it > 3i32];
 ```
 
-匿名函数支持泛型参数、bound、`where` 子句和参数解构，并在每个调用点单态化：
+匿名函数支持参数解构，并按用法推断捕获。需要泛型参数、bound、`where` 子句或递归调用自身时，定义具名函数（具名函数在每个调用点单态化，并且可以递归）：
 
 ```riddle
-let first = fun<T: Copy>((left, _): (T, T)) -> T { left };
-let value = first::<i32>((1, 2));
+fun choose<T: Copy>(base: i32, value: T) -> i32 {
+    if value == base { base } else { 0 }
+}
+let value = choose::<i32>(3, 9);
 ```
 
-泛型匿名函数在每个调用点单态化，也可以捕获外层值并递归调用自身：
-
-```riddle
-let base = 3;
-let choose = fun<T>(value: T) -> i32 {
-    if true { base } else { choose::<T>(value) }
-};
-let value = choose::<i32>(9);
-```
-
-`move fun(...)` 会按值捕获所有使用到的外部位置，`Copy` 值仍然复制。`move` 只改变捕获所有权，不会单独把匿名函数变成 `FnOnce`；按值捕获后只读取的值仍可产生 `Fn`。
+`move [参数 -> 体]` 会按值捕获所有使用到的外部位置，`Copy` 值仍然复制。`move` 只改变捕获所有权，不会单独把匿名函数变成 `FnOnce`；按值捕获后只读取的值仍可产生 `Fn`。
 
 ## 捕获
 
@@ -86,10 +63,10 @@ let value = choose::<i32>(9);
 ```riddle
 fun count() -> i32 {
     let mut total = 0;
-    let mut add = fun(value: i32) -> i32 {
+    let mut add = [value: i32 -> {
         total += value;
         total
-    };
+    }];
     add(1);
     add(2)
 }
@@ -97,7 +74,7 @@ fun count() -> i32 {
 
 捕获方式也决定调用能力：只共享读取环境的匿名函数是 `Fn`，需要修改环境的是 `FnMut`，调用时移出环境中非 `Copy` 值的是 `FnOnce`。`Fn` 同时满足 `FnMut` 和 `FnOnce` 要求，`FnMut` 同时满足 `FnOnce` 要求。调用 `FnMut` 需要可变位置；作为参数时写成 `mut f: impl FnMut(...) -> ...`。`FnOnce` 调用后不能再次使用。
 
-非 `Copy` 值捕获会在创建闭包时移动该值；`move fun` 按值捕获所有使用到的外部位置。按引用捕获的局部需要稳定地址，逃逸分析会决定闭包环境留在栈上还是提升到 GC 堆（见[引用与逃逸](./references-and-escape.md#触发逃逸)）。
+非 `Copy` 值捕获会在创建闭包时移动该值；`move [...]` 按值捕获所有使用到的外部位置。按引用捕获的局部需要稳定地址，逃逸分析会决定闭包环境留在栈上还是提升到 GC 堆（见[引用与逃逸](./references-and-escape.md#触发逃逸)）。
 
 ## 可调用参数与返回值
 
@@ -124,7 +101,7 @@ where F: Fn(i32) -> i32
 
 ```riddle
 fun make_adder(base: i32) -> impl Fn(i32) -> i32 {
-    move fun(value: i32) { base + value }
+    move [value: i32 -> base + value]
 }
 ```
 

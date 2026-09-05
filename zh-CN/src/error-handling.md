@@ -23,7 +23,7 @@ fun read_or_zero(text: &str) -> i32 {
 let value = parse_i32("42").unwrap_or(0);
 ```
 
-`Option` 当前提供 `is_some`、`is_none`、`unwrap`、`unwrap_or`、`map`、`and_then` 和 `or`。
+`Option` 当前提供 `is_some`、`is_none`、`unwrap`、`expect`、`unwrap_or`、`unwrap_or_else`、`map`、`map_or`、`and_then`、`and`、`or` 和 `or_else`。
 
 Riddle 当前没有 Kotlin 式 `T?` 和 `null`。普通缺失值应建模为 `Option`。
 
@@ -46,7 +46,7 @@ fun parse_positive(text: &str) -> Result<i32, &str> {
 }
 ```
 
-`Result` 提供 `is_ok`、`is_err`、`unwrap`、`unwrap_or`、`map`、`and_then`、`ok` 和 `err`。需要保留错误内容或执行不同恢复逻辑时，优先使用 `match`，不要立即丢弃 `Err`。
+`Result` 提供 `is_ok`、`is_err`、`unwrap`、`expect`、`unwrap_or`、`unwrap_or_else`、`map`、`map_err`、`map_or`、`and_then`、`and`、`ok` 和 `err`。需要保留错误内容或执行不同恢复逻辑时，优先使用 `match`，不要立即丢弃 `Err`。
 
 Riddle 当前的 `return` 是语句，不能像 Rust 那样直接写成 `None => return Err(...)`；让整个 `match` 产生 `Result` 即可。
 
@@ -61,7 +61,7 @@ fun double_positive(text: &str) -> Result<i32, &str> {
 }
 ```
 
-`?` 只能用于 `Result<T, E>`，所在函数也必须返回 `Result`。错误类型相同时会直接传播；不同时，编译器要求操作数的错误类型通过 `Into` 转换为外层错误类型。相关诊断是 `E0061`、`E0062` 和 `E0063`。
+`?` 可以用于 `Result<T, E>` 或 `Option<T>`，所在函数也必须返回同一种类型。错误类型相同时会直接传播；不同时，编译器要求操作数的错误类型通过 `Into` 转换为外层错误类型，没有匹配的 `Into` impl 时会回退尝试 `From`。相关诊断是 `E0061`、`E0062` 和 `E0063`。
 
 ## panic 用于不可恢复路径
 

@@ -105,7 +105,7 @@ fun call_owned(value: dyn Speak) -> i32 {
 }
 ```
 
-启用 GC 时，堆存储使用 `rgc_alloc` / `rgc_free`；`[runtime] gc = false` 时改用 `riddle_alloc` / `riddle_free`，因此不需要额外的 `Box<T>` 语法。拥有值离开作用域时通过 drop 槽位释放具体实现；拥有对象可写成 `&owned` 重借用为 `&dyn Trait`，并可向上转型到父 trait。数组 expected type 会逐元素构造拥有对象，带 trait bound 的泛型参数也可转换为拥有对象。跨父 trait 的同名方法会报告歧义；`dyn Fn`、`dyn FnMut` 和 `dyn FnOnce` 也可作为拥有或借用的 callable 值，并复用 `{ call, env, drop }` ABI；带泛型方法的动态对象仍未支持。
+启用 GC 时，堆存储使用 `rgc_alloc` / `rgc_free`；`[runtime] gc = false` 时改用 `riddle_alloc` / `riddle_free`，因此不需要额外的 `Box<T>` 语法。拥有值离开作用域时通过 drop 槽位释放具体实现；拥有对象用普通 `&` 即可重借用为 `&dyn Trait`，并可向上转型到父 trait。数组 expected type 会逐元素构造拥有对象，带 trait bound 的泛型参数也可转换为拥有对象。跨父 trait 的同名方法会报告歧义；`dyn Fn`、`dyn FnMut` 和 `dyn FnOnce` 也可作为拥有或借用的 callable 值，并复用 `{ call, env, drop }` ABI；带泛型方法的动态对象仍未支持。
 
 ## 关联类型
 

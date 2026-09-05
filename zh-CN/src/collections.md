@@ -1,6 +1,6 @@
 # 集合
 
-集合类型持有多个值并支持增删改查。Riddle 目前提供两种可增长容器和一个可变长字符串，它们的缓冲区都在运行时分配，并随容器一起释放。
+集合类型持有多个值并支持增删改查。Riddle 目前提供 `Vector`、`HashMap`、`HashSet`、`TreeMap`、`TreeSet` 五种可增长容器和一个可变长字符串，它们的缓冲区都在运行时分配，并随容器一起释放。
 
 字符串切片的只读知识（`str`、`&str`、字面量、raw string）在[数据类型](./type-system.md#字符串)一章；本章集中介绍会增长、会修改的容器。
 
@@ -12,15 +12,17 @@
 let mut text = String::from_str("hello");
 text.push_str(" world");
 
-let length = text.len();       // 11usize
-let view = text.as_str();      // "hello world"
+let length = text.len();          // 11usize
 let capacity = text.capacity();
 
 text.clear();
-let empty = text.is_empty();   // true
+let empty = text.is_empty();      // true
+
+text.push_str("hello again");
+let view = text.as_str();         // "hello again"
 ```
 
-`String::new()` 创建空字符串。`as_str()` 返回借用当前缓冲区的 `&str`；只要该视图之后仍会使用，借用检查器就会拒绝 `push_str`、`clear` 等可变操作。
+`String::new()` 创建空字符串。`as_str()` 返回借用当前缓冲区的 `&str`；借用持续到视图绑定离开作用域，期间借用检查器会拒绝 `push_str`、`clear` 等可变操作——即使视图之后再没有被读取。因此先完成所有修改、再创建视图，或把视图放进内层块，是最省事的顺序。
 
 常用方法：
 

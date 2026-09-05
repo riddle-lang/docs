@@ -18,8 +18,8 @@ let x = if cond { 1 } else { "hello" };  // E0002: incompatible types: i32 and &
 数组重复表达式 `[value; length]` 的长度必须是能适配 `usize` 的整数字面量，不满足时也报告本错误。
 
 <a id="e0003"></a>
-### E0003 — 需要数值类型
-算术/比较运算符的操作数必须是数值类型。
+### E0003 — 运算符操作数类型不匹配
+运算符对操作数类型有各自的约束：算术运算符要求数值类型，`%`、`<<`、`>>` 和其余位运算要求整数（位运算也接受 `bool`），排序比较要求可比较的数值、`char` 或实现了 `PartialOrd` 的类型；相等比较走 `PartialEq`，不满足时报 `E0036`。
 ```riddle
 let x = true + 1;  // E0003: left operand must be numeric, got bool
 ```
@@ -196,8 +196,8 @@ fun invalid() {
 ```
 
 <a id="e0043"></a>
-### E0043 — 不定长 `str` 用在值位置
-裸 `str` 没有独立布局，不能作为局部变量、参数、返回值、字段或其他值类型的组成部分。字符串值应使用 `&str`。
+### E0043 — 不定长类型用在值位置
+裸 `str`、切片 `[T]` 和 trait 对象 `dyn Trait` 没有独立于借用/指针的布局，不能作为局部变量、参数、返回值、字段或其他值类型的组成部分。字符串值应使用 `&str`，切片和动态对象分别通过 `&[T]`、`&dyn Trait` 或拥有形式使用。
 ```riddle
 let invalid: str = "hello";  // E0043
 let valid: &str = "hello";   // OK
@@ -216,9 +216,9 @@ trait Second: First {}
 ### E0045 — 无法推断匿名函数参数类型
 参数类型无法从函数体、期望的可调用签名或调用点确定。
 ```riddle
-let id = fun(x) { x };  // E0045
+let id = [x -> x];  // E0045
 ```
-添加显式类型，例如 `fun(x: i32) { x }`。延迟初始化的 `let` 绑定在首次赋值前无法确定类型时，也报告本错误。
+添加显式类型，例如 `[x: i32 -> x]`。延迟初始化的 `let` 绑定在首次赋值前无法确定类型时，也报告本错误。
 
 <a id="e0046"></a>
 ### E0046 — 不安全操作需要 unsafe 上下文
@@ -252,7 +252,7 @@ fun call_contract() {
 类型检查器在统一类型时检测到自我引用的替换循环，继续统一会构造出无限大的类型。
 ```riddle
 fun main() {
-    let id = fun(value) { value };
+    let id = [value -> value];
     id(id);  // E0067: 把 `id` 传给它自己会让参数类型等于自身
 }
 ```
@@ -314,16 +314,16 @@ const ANSWER: i32 = make_answer();  // E0060
 ```
 
 <a id="e0061"></a>
-### E0061 — `?` 的操作数不是 `Result`
-`?` 只能展开 `Result<T, E>`，不能用于普通值或其他枚举。
+### E0061 — `?` 的操作数不是 `Result` 或 `Option`
+`?` 只能展开 `Result<T, E>` 或 `Option<T>`，不能用于普通值或其他枚举。
 
 <a id="e0062"></a>
-### E0062 — `?` 只能出现在返回 `Result` 的函数中
-包含 `?` 的函数必须返回与操作数同一个 `Result` 枚举。
+### E0062 — `?` 只能出现在返回 `Result` 或 `Option` 的函数中
+包含 `?` 的函数必须返回与操作数同一种类型：操作数是 `Result` 时返回同一个 `Result` 枚举，操作数是 `Option` 时返回 `Option`。
 
 <a id="e0063"></a>
 ### E0063 — `?` 的错误类型无法转换
-源 `Result` 的错误类型必须实现 `Into<目标错误类型>`，并且转换方法的返回类型必须与外层 `Result` 错误类型一致。
+源 `Result` 的错误类型必须实现 `Into<目标错误类型>`；没有匹配的 `Into` impl 时，编译器会回退尝试 `From<源错误类型>` for 目标错误类型，两者都不满足时报告本错误码。
 
 <a id="e0065"></a>
 ### E0065 — 带值的 `break` 位于 `loop` 之外
@@ -372,13 +372,22 @@ type Result = Result;  // E0391: cycle detected when expanding type alias `Resul
 ## Trait / Impl 检查 (E0020–E0030, E0047–E0048)
 
 <a id="e0020"></a>
-### E0020 — trait 重复方法
-同一个 trait 内定义了同名方法。
+### E0020 — trait 重复方法 / callable 签名不匹配
+同一个 trait 内定义了同名方法；callable impl（`impl Fn* for T`）的 `call` 方法签名与 impl 头声明的调用签名不一致时，也报告本错误码。
 ```riddle
 trait Foo {
     fun bar();
     fun bar();  // E0020: duplicate method `bar`
 }
+```
+
+<a id="e0021"></a>
+### E0021 — callable impl 缺少 `call` 方法
+`impl Fn(...) -> T for X` 要求实现体提供名为 `call` 的方法；缺少时报告本错误码。`Fn` 使用 `&self` 接收者，`FnMut` 使用 `&mut self`，`FnOnce` 使用 `self`。
+```riddle
+struct Adder {}
+
+impl Fn(i32) -> i32 for Adder {}  // E0021: callable impl is missing required method `call`
 ```
 
 <a id="e0022"></a>
@@ -476,7 +485,7 @@ impl Foo for Point {}
 impl Foo for Point {}  // E0047: conflicting implementations
 ```
 
-callable impl 或 bound 的格式错误也使用本错误码：`Fn`、`FnMut`、`FnOnce` 必须携带 `(参数类型...) -> 返回类型` 调用签名。一般的 `impl Trait` 不要求调用签名。
+callable impl 或 bound 的格式错误也使用本错误码：`Fn`、`FnMut`、`FnOnce` 必须携带 `(参数类型...) -> 返回类型` 调用签名，`dyn` 后面必须跟 trait 类型。一般的 `impl Trait` 不要求调用签名。
 
 <a id="e0048"></a>
 ### E0048 — impl 违反孤儿规则
@@ -574,7 +583,7 @@ let z = x;    // E0100: use of moved value: `x`
 
 <a id="e0200"></a>
 ### E0200 — 逃逸分析提示（保留）
-诊断打印器已经把 `E0200` 归类为 escape 阶段提示，但当前逃逸分析只把结果交给 MIR 降级决定 `Alloca` 或 `HeapAlloc`，不会主动向用户发出这个诊断码。
+`E0200` 是保留码：当前逃逸分析只把结果交给 MIR 降级决定 `Alloca` 或 `HeapAlloc`，不会以任何形式向用户发出这个诊断码。
 
 <a id="e0300"></a>
 ### E0300 — 可变借用与已有共享借用冲突
@@ -657,7 +666,7 @@ fun escaped() -> &Data {
     &value // E0310
 }
 ```
-改为返回有所有权的值、使用 `move fun` 按值捕获，或把引用限制在所有者作用域内。来自调用者的输入引用仍可直接转发，因为这不会延长它指向值的生命周期。
+改为返回有所有权的值、使用 `move [...]` 按值捕获，或把引用限制在所有者作用域内。来自调用者的输入引用仍可直接转发，因为这不会延长它指向值的生命周期。
 
 ---
 

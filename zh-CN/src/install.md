@@ -142,7 +142,7 @@ clue new hello
 cargo run -p riddlec -- --backend c --output hello.c hello/src/main.rid
 ```
 
-C backend 只写出调用 `rgc` ABI 的 C 源码，不会调用系统编译器。二进制发行包附带默认 `runtime.c`；如需本机可执行文件，可以运行 `cc hello.c runtime.c -o hello`。`clue build` 会自动完成这一步。
+C backend 只写出调用 `rgc` ABI 的 C 源码，不会调用系统编译器。二进制发行包附带默认 `runtime.c` 与 `args_runtime.c`；如需本机可执行文件，可以运行 `cc hello.c runtime.c args_runtime.c -o hello`。`clue build` 会自动完成这一步。
 
 ## 构建文档
 
@@ -174,7 +174,7 @@ rustup toolchain install 1.97.1
 
 ### 如何运行 C backend 的输出？
 
-`riddlec --backend c` 只生成 `.c` 文件。请使用系统中的 `cc`、`gcc` 或 `clang`，把生成文件与发行包附带的 `runtime.c` 一起编译；默认运行时不依赖 Boehm GC，因此不需要 `-lgc`。`clue build` 会自动完成这一步。
+`riddlec --backend c` 只生成 `.c` 文件。请使用系统中的 `cc`、`gcc` 或 `clang`，把生成文件与发行包附带的 `runtime.c` 和 `args_runtime.c` 一起编译；默认运行时不依赖 Boehm GC，因此不需要 `-lgc`。`clue build` 会自动完成这一步。
 
 ### 示例文件在哪里？
 
