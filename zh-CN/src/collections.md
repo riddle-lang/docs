@@ -83,6 +83,8 @@ fun demos() {
 
 `values[index]` 下标访问越界时会调用 `panic` 并终止进程；需要可恢复的访问时使用 `get`。按值 `for` 会消耗向量并逐个产出元素（见[闭包与迭代器](./functional.md#迭代协议)）。
 
+`push` / `insert` / `remove` 可能搬移缓冲区。持有元素引用或切片时修改向量（`push` / `insert` / `remove` 会搬移缓冲区），得到的是指向已释放缓冲区的悬垂引用；借用检查器不会拦截这类修改，与 Rust 不同。先修改、再取引用，是唯一安全的顺序。
+
 ## Map 与 Set
 
 集合需要显式导入，不在 prelude 中：

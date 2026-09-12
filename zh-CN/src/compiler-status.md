@@ -230,11 +230,11 @@ prelude 只直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`No
 - `vec!` 宏支持三种形式：`vec![a, b, c]` 构造 `Vector` 并逐个 `push`（元素按值移动，支持尾随逗号与嵌套 `vec!`），`vec![elem; count]` 展开为 `Vector::from_elem(elem, count)`（要求元素实现 `Clone`，为每个槽位克隆），空 `vec![]` 展开为 `Vector::new()` 块并由上下文推断元素类型（无法推断时报告类型错误）；`Vector::from_elem` 是公开的标准库 API；
 - `std::string::String` 提供 `new`、`from_str`、`as_str`、`len`、`capacity`、`is_empty`、`push_str`、`push_char`、`clear`、`split`、`replace`、`to_ascii_uppercase` 和 `to_ascii_lowercase`（`split` 返回 `Vector<String>`，空分隔符行为与 `find` 一致）；同一模块按 Rust 风格为 `str` 提供 `len`、`is_empty`、`as_bytes`、`contains`、`find`、`starts_with`、`ends_with`、`slice`、`trim`、`split`、`replace`、`to_ascii_uppercase`、`to_ascii_lowercase` 和按 Unicode `char` 遍历的 `StrIter`；
 - `std::vector::Vector<T>` 提供 `new`、`len`、`capacity`、`is_empty`、`push`、`pop`、`insert`、`remove`、`get`、`get_mut`、`swap`、`sort`（要求 `T: PartialOrd`，插入排序）、`contains`（要求 `T: PartialEq`）、`retain`、`clear`、`as_slice`、读写下标和按值迭代； `Vector<T>` 另提供 `from_iterator`（把任意迭代器收集为向量）和 `from_elem(value, count)`（要求 `T: Clone`，`vec![value; count]` 的底层实现）；下标越界调用 `panic`，缓冲区通过运行时 `rgc_realloc`、`rgc_free` 管理；
-- `Vector<T>` 会拒绝零大小元素并检查容量乘法溢出；同点原始指针支持 `==` / `!=` 按地址比较，`p == 0usize as *const T` 可用于空指针检查；
+- `Vector<T>` 对零大小元素分配至少一个槽位并检查容量乘法溢出；同点原始指针支持 `==` / `!=` 按地址比较，`p == 0usize as *const T` 可用于空指针检查；
 - `std::iter::{Iterator, IntoIterator}`；`Iterator` 提供默认方法 `count`、`nth`、`fold`、`for_each`、`all`、`any`、`find`、`position`，以及惰性的 `map` / `filter`（通过闭包字段适配器实现，可链式组合并支持 `for` 遍历）；`std::iter` 另提供急切求值的 `map_into` / `filter_into`（返回 `Vector`）与适配器构造函数 `enumerate` / `take` / `zip` / `skip`，以及 `min` / `max`（返回 `Option<Item>`，要求 `Item: PartialOrd`）；`Iterator::collect` 可把任意迭代器收集为 `Vector<Self::Item>`，`Vector::from_iterator` 与之等价；`DoubleEndedIterator` 提供 `next_back`，切片迭代器 `SliceIter` 支持从尾部遍历；
 - `std::slice::{SliceIter, SliceIterMut}`，并为 `[T]` 提供长度、边界检查访问、原始指针访问和借用迭代；
 - `std::array` 中的按值、共享借用和可变借用数组迭代器；
-- `std::ops::{Range, range(start, end)}`；范围表达式 `a..b` 脱糖为 `range(a, b)`，`a..=b` 脱糖为 `range_inclusive(a, b)`（`std::ops::RangeInclusive`，含单元素与空区间语义）；
+- `std::ops::{Range<T>, RangeInclusive<T>, range(start, end)}` 支持整型 Step；范围表达式 `a..b` 脱糖为 `range(a, b)`，`a..=b` 脱糖为 `range_inclusive(a, b)`；
 - `std::marker::Copy`；
 - `std::clone::Clone`；
 - `std::cmp::{Ordering, PartialEq, Eq, PartialOrd, Ord}`；
@@ -243,7 +243,7 @@ prelude 只直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`No
 - `std::convert::Into<T>` 是 `?` 错误传播使用的错误转换协议；`std::convert::From<T>` 已提供，`?` 在没有 `Into` impl 时回退查找 `From` impl（Rust 风格错误链路），且 `?` 同样支持 `Option<T>` 操作数（在返回 `Option` 的函数中把 `None` 提前返回）；
 - `std::hash::Hash` 通过共享借用为标量提供确定性的 `usize` 哈希值；
 - `std::collections::{TreeMap, TreeSet}` 使用红黑树，键要求实现 `Ord`；`std::collections::{HashMap, HashSet}` 使用开放寻址哈希表、线性探测和负载扩容，键要求实现 `Hash + Eq`；四类集合都提供 `remove`：HashMap 采用线性探测的后移删除（backward-shift deletion），TreeMap 采用带删除修复（delete fixup）的 CLRS 红黑树删除并压缩 arena 槽位；对应实现模块位于 `std::collections::{tree_map, tree_set, hash_map, hash_set}`；`HashMap::get_or_insert(key, default)` 返回已有值或插入默认值后的可变引用；
-- `std::parse` 提供 `parse_i32` / `parse_i64` / `parse_u64` / `parse_usize`（十进制、溢出安全）与 `parse_with_radix`（2–36 进制）；`std::time::time_now` 转发到 C `time`，`Duration::from_secs` / `from_millis` 与 `sleep` 转发到 `riddle_sleep_ms`；
+- `std::parse` 提供返回 `Result<T, ParseIntError>` 的 `parse_i32` / `parse_i64` / `parse_u64` / `parse_usize` 与 `parse_with_radix`（2–36 进制及分类错误）；`std::time::time_now` 转发到 C `time`，`Duration::from_secs` / `from_millis` 与 `sleep` 转发到 `riddle_sleep_ms`；
 - `std::fs::FsFile` 通过运行时提供的 `riddle_fs_*` 薄包装（避免与 `<stdio.h>` 原型冲突）访问 C `stdio`：`open` / `create` / `append` / `read` / `write` / `flush` / `read_to_string`，`Drop` 保证关闭句柄；`std::fs::{read_to_string, write}` 提供整文件便捷读写；`std::fs::{exists, metadata, read_dir}` 提供存在性检查、`FileMetadata { size, is_file, is_dir }` 元数据查询和目录条目枚举（`read_dir` 返回 `Vector<String>`，跨平台由 Win32 `FindFirstFile` / POSIX `dirent` 支撑）；`?` 可直接在这些 `Result<FsError>` API 间传播；
 - `std::random` 提供 `random_u32` / `random_u64` / `random_bool` / `random_below`，由 `riddle_random_u32` / `riddle_random_u64` 运行时垫片支撑（Windows 使用 `GetTickCount` 种子的 xorshift，POSIX 读取 `/dev/urandom`）；`std::ptr` 场景下同点原始指针可用 `==` / `!=` 按地址比较，`p == 0usize as *const T` 即空指针检查；
 

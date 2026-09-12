@@ -76,7 +76,7 @@ fun main() {
 }
 ```
 
-`parse_i32` / `parse_i64` / `parse_u64` / `parse_usize` 只解析十进制；空串、单独的负号、非法字符和超出目标范围的输入返回 `None`，`parse_with_radix` 支持 2–36 进制。`time_now` 转发到 C `time` 并返回 `i64`；`Duration` 提供 `from_secs` / `from_millis` / `as_secs` / `as_millis`，`sleep` 转发到运行时垫片。
+`parse_i32` / `parse_i64` / `parse_u64` / `parse_usize` 返回 `Result<T, ParseIntError>`；错误包含 `Empty`、`InvalidDigit`、`PosOverflow` 和 `NegOverflow`，`parse_with_radix` 支持 2–36 进制。`time_now` 转发到 C `time` 并返回 `i64`；`Duration` 提供 `from_secs` / `from_millis` / `as_secs` / `as_millis`，`sleep` 转发到运行时垫片。
 
 ## 进程参数
 
@@ -95,11 +95,15 @@ fun main() {
 | `std::string::String` | `new`、`from_str`、`from_utf8`、`as_str`、`as_bytes`、`len`、`capacity`、`is_empty`、`push_str`、`push_char`、`clear`、`slice`、`trim`、`contains`、`find`、`starts_with`、`ends_with`、`split`、`replace`、`to_ascii_uppercase`、`to_ascii_lowercase` |
 | `std::str`（impl） | `len`、`is_empty`、`as_bytes`、`contains`、`find`、`starts_with`、`ends_with`、`slice`、`trim`、`split`、`replace`、`to_ascii_uppercase`、`to_ascii_lowercase`，以及按 Unicode `char` 遍历的 `StrIter` |
 | `std::vector::Vector<T>` | `new`、`len`、`capacity`、`is_empty`、`push`、`pop`、`insert`、`remove`、`get`、`get_mut`、`swap`、`sort`、`contains`、`retain`、`clear`、`as_slice`、`as_ptr`、`iter`、`iter_mut`、`from_iterator`、`from_elem`、读写下标和按值迭代 |
-| `std::collections` | `HashMap`、`HashSet`（键需 `Hash + Eq`）、`TreeMap`、`TreeSet`（键需 `Ord`），四类集合均提供 `remove`，`HashMap` 另有 `get_or_insert` |
+| `std::collections` | `HashMap`、`HashSet`（键需 `Hash + Eq`）、`TreeMap`、`TreeSet`（键需 `Ord`），四类集合均提供 `remove`；`HashMap` 另有 `get_or_insert` 与 Rust 风格的 `entry(key)`（返回 `Entry` 枚举：`Occupied`/`Vacant`），配合 `or_insert` / `or_insert_with` / `or_default` 实现"不存在则插入"惯用法 |
 | `std::iter` | `Iterator`、`IntoIterator` 协议；`Iterator` 的默认方法含 `map`、`filter`、`chain`、`inspect`、`count`、`nth`、`fold`、`for_each`、`all`、`any`、`find`、`position` 和 `collect`；`std::iter` 另提供急切的 `map_into` / `filter_into`，适配器 `enumerate` / `take` / `skip` / `take_while` / `skip_while` / `zip`，`min` / `max`，以及 `DoubleEndedIterator` |
 | `std::slice` | `SliceIter`、`SliceIterMut`，以及 `[T]` 的长度、边界检查访问、原始指针访问和借用迭代 |
 | `std::array` | 按值、共享借用和可变借用数组迭代器 |
-| `std::fs` | `FsFile`（`open`、`create`、`append`、`read`、`write`、`flush`、`read_to_string`）、`exists`、`metadata`、`read_dir`，以及整文件 `read_to_string` / `write` |
+| `std::fs` | `FsFile`（`open`、`create`、`append`、`read`、`write`、`flush`、`read_to_string`）、`exists`、`metadata`、`read_dir`、`remove`、`rename`、`copy`，以及整文件 `read_to_string` / `write` |
+| `std::io` | `eprint`、`eprintln`、`read_line`、`BufReader` |
+| `std::char` | ASCII 判断与大小写转换、`to_digit`、`from_digit`、空白判断 |
+| `std::process` | `exit(code)` |
+| `std::mem` | `swap`、`take` |
 | `std::random` | `random_u32`、`random_u64`、`random_bool`、`random_below` |
 | `std::ops` | `Range`、`RangeInclusive`、`range(start, end)`、`range_inclusive(start, end)`、`Drop`，以及算术、位运算、移位、复合赋值和 `Index` / `IndexMut` trait |
 | `std::marker` | `Copy` |
@@ -112,4 +116,4 @@ fun main() {
 | `std::parse` | `parse_i32`、`parse_i64`、`parse_u64`、`parse_usize`、`parse_with_radix` |
 | `std::time` | `time_now`、`Duration`（`from_secs`、`from_millis`、`as_secs`、`as_millis`）和 `sleep` |
 
-`Vector<T>` 会拒绝零大小元素并检查容量乘法溢出；下标越界调用 `panic`。错误传播的完整规则见[错误处理](./error-handling.md)。
+`Vector<T>` 对零大小元素也分配至少一个槽位，并检查容量乘法溢出；下标越界调用 `panic`。错误传播的完整规则见[错误处理](./error-handling.md)。
