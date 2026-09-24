@@ -24,7 +24,7 @@ riddlec [--verbose] [--no-std] [--backend c] [--target <triple>] [--output <file
 
 `--backend c` 会生成调用 `rgc` ABI 的 C 代码；如需可执行文件，使用本机 `cc`、`gcc` 或 `clang` 同时编译生成结果与发行包附带的 `runtime.c` 和 `args_runtime.c`（C 入口 `main` 会无条件初始化进程参数，因此 `std::env` 的 `args()` / `args_os()` 在任何包中调用都可用）；生成代码的头部注释会给出完整链接命令。`clue build` 会自动完成这一步，不依赖 Boehm GC。多个输入文件会作为一个包合并编译，文件之间可以直接引用彼此的顶层条目。
 
-`riddle fmt` 提供源码格式化和 `--check` 检查，LSP 格式化请求与该命令共享实现。
+`riddle` 可执行文件提供 `fmt`、`run` 和 `repl` 三个子命令：`riddle fmt` 是源码格式化和 `--check` 检查，LSP 格式化请求与该命令共享实现；`riddle run <file.rid> [-- args] [--seed N]` 编译单个文件并交给内置 MIR 解释器执行，`riddle repl` 用同一解释器启动交互会话，两者都不需要 C 工具链。
 
 不指定后端时，`riddlec` 在完成 move/borrow 检查后停止；只有生成后端代码时才继续降级 MIR。
 
@@ -44,6 +44,20 @@ MIR（Mid-level IR）是 SSA 形式的中间表示，位于类型检查和代码
 - **函数值**：可调用值统一为 `{ call, env, drop }`，`FunctionRef` 取得隐藏函数或命名函数适配器地址，`CallIndirect` 传入环境后调用；未逃逸的捕获环境使用栈存储，只有越过当前栈帧的环境才提升到 GC 堆。
 
 MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`、`Slice`、`Str`、`Never`、`Void`，并为定长类型提供 `size_bytes()` 布局估算；裸 `Str` 和 `Slice` 没有独立大小。
+
+`riddlec --emit mir` 会打印整个程序的 MIR，便于对照降级结果。
+
+### MIR 解释器
+
+`crates/interpreter` 是一个树遍历解释器，直接执行降级完成的 MIR 模块，服务 `riddle run` 与 `riddle repl`：
+
+- **与 C 后端对齐的语义**：整数 wrapping、除零与 `MIN / -1` trap、按宽度掩码的移位、浮点转整数饱和、带边界检查的下标、rustc 风格的 `panic` 渲染、裸指针按地址比较；
+- **原生 shim**：标准库声明的 `extern` 由内置实现提供（`std::fs`、时间、随机数、进程与标准 I/O、`rgc_*` 分配门面），因此不需要 C 工具链；用户自定义的 `extern "C"` 没有实现，调用时报告 `interpreter does not support extern`；
+- **panic 位置**：映射回真实 `.rid` 文件，穿过标准宏展开并覆盖随编译器附带的 std 区域；
+- **REPL**：顶层定义累积、`let` 与表达式行写进自动生成的 `main` 并整体重编译重跑（副作用会重放），表达式回显 `{:?}` 并绑定 `__`，`:help` / `:reset` / `:mir` / `:quit` 为会话命令；
+- **退出码**：镜像编译后的本机可执行文件。
+
+`tests/interpreter`（43 个用例）在不要求 C 编译器的情况下镜像 `tests/mir/std_behavior` 的场景，`benches/interpreter.rs`（`cargo bench`）用固定工作负载盯住执行循环的性能。
 
 ### riddle-lsp
 
@@ -147,6 +161,7 @@ C backend 对整数回绕、除零、最小值除以 `-1`、移位计数和浮�
 - 元组模式；
 - 结构体模式；
 - 枚举 unit/tuple/struct 变体模式，payload 绑定会进入 guard 和 arm 表达式；
+- `match` arm 顶层的或模式 `A | B`（也包括第一个备选之前的 `|`）：备选独立检查与降级，穷尽性矩阵按备选展开成多行，备选条件与 guard 在 MIR 中用按位或折叠；绑定变量的备选报 `E0010`，`let 1 | 2 = x` 与 `if let A | B = v` 被拒绝，嵌套备选（`Some(1 | 2)`）由解析器报错；
 - 引用 match ergonomics：结构化模式自动解引用 `&T` / `&mut T`，内部绑定继承共享或可变引用模式；裸绑定保留整个引用，且不提供 `ref` / `ref mut` 语法。默认绑定模式变为引用后，内部不能再写 `mut binding` 或显式引用模式。
 
 ### 类型系统
@@ -222,30 +237,34 @@ Clue 支持 `#[proc_macro_derive(Name, attributes(...))]`、`#[proc_macro_attrib
 
 prelude 只直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`、`Ok`、`Err`、`Copy`、`Clone`、`Drop`、`drop`、`Default`、`Into`、比较 trait 和迭代协议。集合、格式化 trait、具体迭代器、区间、解析、时间及底层输出函数需要从各自模块显式导入；标准宏命名空间隐式提供 `Debug`、`Clone`、`Copy`、`Default`、`Hash`、`PartialEq`、`Eq`、`PartialOrd`、`Ord` 派生，格式化与输出宏，以及 `assert!` / `assert_eq!` / `assert_ne!`、对应的 `debug_assert*` 宏、`todo!`、`unimplemented!` 和 `unreachable!`。
 
-- `std::option::Option<T>`，提供 `is_some`、`is_none`、`unwrap`、`unwrap_or`、`map`、`and_then` 和 `or`；
-- `std::result::Result<T, E>`，提供 `is_ok`、`is_err`、`unwrap`、`unwrap_or`、`map`、`and_then`、`ok` 和 `err`；
+- `std::option::Option<T>`，提供 `is_some`、`is_none`、`unwrap`、`expect`、`unwrap_or`、`unwrap_or_else`、`map`、`map_or`、`and_then`、`and`、`or` 和 `or_else`；
+- `std::result::Result<T, E>`，提供 `is_ok`、`is_err`、`unwrap`、`expect`、`unwrap_or`、`unwrap_or_else`、`map`、`map_or`、`map_err`、`and_then`、`and`、`ok` 和 `err`；
 - `std::ffi::OsString` 无损保存平台字符串；`std::env::args_os()` 在 Unix 保存原始参数字节，在 Windows 解析 `GetCommandLineW` 并以 WTF-8 保存 UTF-16，`std::env::args()` 则严格转换为 `String`，遇到非 Unicode 参数时 panic；
-- `print!` / `println!` 通过隐藏的标准库输出入口和 `std::fmt::{Debug, Display, Formatter, Result}` 支持字符串、布尔、字符、整数和浮点标量；格式化 trait 不在 prelude 中，底层输出入口不属于用户 API。`Debug` 与 `Display` 都使用 `fmt(&self, formatter: &mut Formatter) -> Result`，字符串和字符的 `Debug` 输出会添加引号并转义；标准派生支持结构体、泛型结构体以及 unit、tuple、named 三类枚举变体，当前包括 `Debug`、`Clone`、`Copy`、`Default`、`Hash`、`PartialEq`、`Eq`、`PartialOrd` 和 `Ord`，并为泛型参数生成相应 bound；枚举 `Default` 要求恰好一个带 `#[default]` 的 unit 变体，排序派生按变体声明顺序和 payload 字典序工作；`Copy` impl 会验证所有字段和 payload，比较派生仍需满足父 trait；`Option`、`Result`、`String`、`Vector`、`HashMap`、`HashSet`、`TreeMap` 和 `TreeSet` 均通过 `Debug` 派生实现格式化；`print!` / `println!` 支持空调用，`format!` 要求字符串字面量并返回 `String`，`panic!()` 使用 `explicit panic`，`panic!(...)` 在终止前格式化消息；四个宏都支持字符串字面量、`{}` / `{:?}` / `{0}` 位置参数 / `{name}` 命名捕获、尾随逗号以及 `{{` / `}}`，并在编译期校验格式串；`{}` 按从左到右的顺序消费参数，`{0}` 可重复引用任意参数，`{name}` 隐式捕获调用处的同名局部变量；宽度、对齐等其他格式说明符尚未实现；
+- `print!` / `println!` 通过隐藏的标准库输出入口和 `std::fmt::{Debug, Display, Formatter, Result}` 支持字符串、布尔、字符、整数和浮点标量；格式化 trait 不在 prelude 中，底层输出入口不属于用户 API。`Debug` 与 `Display` 都使用 `fmt(&self, formatter: &mut Formatter) -> Result`，字符串和字符的 `Debug` 输出会添加引号并转义；标准派生支持结构体、泛型结构体以及 unit、tuple、named 三类枚举变体，当前包括 `Debug`、`Clone`、`Copy`、`Default`、`Hash`、`PartialEq`、`Eq`、`PartialOrd` 和 `Ord`，并为泛型参数生成相应 bound；枚举 `Default` 要求恰好一个带 `#[default]` 的 unit 变体，排序派生按变体声明顺序和 payload 字典序工作；`Copy` impl 会验证所有字段和 payload，比较派生仍需满足父 trait；`Option`、`Result`、`String`、`Vector`、`HashMap`、`HashSet`、`TreeMap` 和 `TreeSet` 均通过 `Debug` 派生实现格式化；`print!` / `println!` 支持空调用，`format!` 要求字符串字面量并返回 `String`，`panic!()` 使用 `explicit panic`，`panic!(...)` 在终止前格式化消息；四个宏都支持字符串字面量、`{}` / `{:?}` / `{0}` 位置参数 / `{name}` 命名捕获、尾随逗号以及 `{{` / `}}`，并在编译期校验格式串；`{}` 按从左到右的顺序消费参数，`{0}` 可重复引用任意参数，`{name}` 隐式捕获调用处的同名局部变量；说明符仅支持空说明符和 `:?`，宽度、对齐等其他说明符、越界的位置索引与实参数量不足都会在编译期报错；
 - `assert!`、`assert_eq!`、`assert_ne!` 及对应的 `debug_assert*` 宏复用 `panic!`；比较断言只求值两侧一次并显示 `Debug` 值，自定义消息仅在失败路径求值。`todo!`、`unimplemented!` 和 `unreachable!` 返回 `!` 并保留调用位置；当前所有构建都会执行 debug assertion；
 - `vec!` 宏支持三种形式：`vec![a, b, c]` 构造 `Vector` 并逐个 `push`（元素按值移动，支持尾随逗号与嵌套 `vec!`），`vec![elem; count]` 展开为 `Vector::from_elem(elem, count)`（要求元素实现 `Clone`，为每个槽位克隆），空 `vec![]` 展开为 `Vector::new()` 块并由上下文推断元素类型（无法推断时报告类型错误）；`Vector::from_elem` 是公开的标准库 API；
 - `std::string::String` 提供 `new`、`from_str`、`as_str`、`len`、`capacity`、`is_empty`、`push_str`、`push_char`、`clear`、`split`、`replace`、`to_ascii_uppercase` 和 `to_ascii_lowercase`（`split` 返回 `Vector<String>`，空分隔符行为与 `find` 一致）；同一模块按 Rust 风格为 `str` 提供 `len`、`is_empty`、`as_bytes`、`contains`、`find`、`starts_with`、`ends_with`、`slice`、`trim`、`split`、`replace`、`to_ascii_uppercase`、`to_ascii_lowercase` 和按 Unicode `char` 遍历的 `StrIter`；
 - `std::vector::Vector<T>` 提供 `new`、`len`、`capacity`、`is_empty`、`push`、`pop`、`insert`、`remove`、`get`、`get_mut`、`swap`、`sort`（要求 `T: PartialOrd`，插入排序）、`contains`（要求 `T: PartialEq`）、`retain`、`clear`、`as_slice`、读写下标和按值迭代； `Vector<T>` 另提供 `from_iterator`（把任意迭代器收集为向量）和 `from_elem(value, count)`（要求 `T: Clone`，`vec![value; count]` 的底层实现）；下标越界调用 `panic`，缓冲区通过运行时 `rgc_realloc`、`rgc_free` 管理；
 - `Vector<T>` 对零大小元素分配至少一个槽位并检查容量乘法溢出；同点原始指针支持 `==` / `!=` 按地址比较，`p == 0usize as *const T` 可用于空指针检查；
-- `std::iter::{Iterator, IntoIterator}`；`Iterator` 提供默认方法 `count`、`nth`、`fold`、`for_each`、`all`、`any`、`find`、`position`，以及惰性的 `map` / `filter`（通过闭包字段适配器实现，可链式组合并支持 `for` 遍历）；`std::iter` 另提供急切求值的 `map_into` / `filter_into`（返回 `Vector`）与适配器构造函数 `enumerate` / `take` / `zip` / `skip`，以及 `min` / `max`（返回 `Option<Item>`，要求 `Item: PartialOrd`）；`Iterator::collect` 可把任意迭代器收集为 `Vector<Self::Item>`，`Vector::from_iterator` 与之等价；`DoubleEndedIterator` 提供 `next_back`，切片迭代器 `SliceIter` 支持从尾部遍历；
+- `std::iter::{Iterator, IntoIterator}`；`Iterator` 提供默认方法 `count`、`nth`、`fold`、`for_each`、`all`、`any`、`find`、`position`，以及惰性的 `map` / `filter` / `chain` / `take_while` / `skip_while` / `inspect`（通过闭包字段适配器实现，可链式组合并支持 `for` 遍历）；`std::iter` 另提供急切求值的 `map_into` / `filter_into`（返回 `Vector`）与适配器构造函数 `enumerate` / `take` / `zip` / `skip`，以及 `min` / `max`（返回 `Option<Item>`，要求 `Item: PartialOrd`）；`Iterator::collect` 可把任意迭代器收集为 `Vector<Self::Item>`，`Vector::from_iterator` 与之等价；`DoubleEndedIterator` 提供 `next_back`，切片迭代器 `SliceIter` 支持从尾部遍历；
 - `std::slice::{SliceIter, SliceIterMut}`，并为 `[T]` 提供长度、边界检查访问、原始指针访问和借用迭代；
 - `std::array` 中的按值、共享借用和可变借用数组迭代器；
 - `std::ops::{Range<T>, RangeInclusive<T>, range(start, end)}` 支持整型 Step；范围表达式 `a..b` 脱糖为 `range(a, b)`，`a..=b` 脱糖为 `range_inclusive(a, b)`；
 - `std::marker::Copy`；
 - `std::clone::Clone`；
-- `std::cmp::{Ordering, PartialEq, Eq, PartialOrd, Ord}`；
+- `std::cmp::{Ordering, PartialEq, Eq, PartialOrd, Ord}`；`Ordering` 自身也实现 `PartialEq` / `Eq` / `PartialOrd` / `Ord`（按变体声明顺序：`Less < Equal < Greater`），所以 `x.cmp(&y) == Ordering::Equal` 与 `Vector<Ordering>::sort` 都可用；
 - `std::ops` 下的算术、位运算、移位、复合赋值以及 `Index` / `IndexMut` trait，均有可调用的必需方法；这些 trait 由对应 `#[lang = "..."]` 标记，用户类型的下标操作静态分派到 `index` / `index_mut`。
 - `std::default::Default` 为标量、`Option<T>`、`String` 和 `Vector<T>` 提供默认值；`Default::default()` 支持按期望类型静态选择 impl；
 - `std::convert::Into<T>` 是 `?` 错误传播使用的错误转换协议；`std::convert::From<T>` 已提供，`?` 在没有 `Into` impl 时回退查找 `From` impl（Rust 风格错误链路），且 `?` 同样支持 `Option<T>` 操作数（在返回 `Option` 的函数中把 `None` 提前返回）；
-- `std::hash::Hash` 通过共享借用为标量提供确定性的 `usize` 哈希值；
+- `std::hash::Hash` 通过共享借用为标量提供确定性的 `usize` 哈希值；浮点 impl 按位模式经 `fmix64`（MurmurHash3 finalizer）混合后哈希（而非数值截断），不同的浮点值不会因小数部分被截断而共享哈希；`Hash`、`PartialEq` / `Eq`、`PartialOrd` / `Ord`、`Display` / `Debug` 为 2–6 元元组提供 impl（逐元素递归到元素自身的 impl，元组按字典序比较）；
 - `std::collections::{TreeMap, TreeSet}` 使用红黑树，键要求实现 `Ord`；`std::collections::{HashMap, HashSet}` 使用开放寻址哈希表、线性探测和负载扩容，键要求实现 `Hash + Eq`；四类集合都提供 `remove`：HashMap 采用线性探测的后移删除（backward-shift deletion），TreeMap 采用带删除修复（delete fixup）的 CLRS 红黑树删除并压缩 arena 槽位；对应实现模块位于 `std::collections::{tree_map, tree_set, hash_map, hash_set}`；`HashMap::get_or_insert(key, default)` 返回已有值或插入默认值后的可变引用；
 - `std::parse` 提供返回 `Result<T, ParseIntError>` 的 `parse_i32` / `parse_i64` / `parse_u64` / `parse_usize` 与 `parse_with_radix`（2–36 进制及分类错误）；`std::time::time_now` 转发到 C `time`，`Duration::from_secs` / `from_millis` 与 `sleep` 转发到 `riddle_sleep_ms`；
-- `std::fs::FsFile` 通过运行时提供的 `riddle_fs_*` 薄包装（避免与 `<stdio.h>` 原型冲突）访问 C `stdio`：`open` / `create` / `append` / `read` / `write` / `flush` / `read_to_string`，`Drop` 保证关闭句柄；`std::fs::{read_to_string, write}` 提供整文件便捷读写；`std::fs::{exists, metadata, read_dir}` 提供存在性检查、`FileMetadata { size, is_file, is_dir }` 元数据查询和目录条目枚举（`read_dir` 返回 `Vector<String>`，跨平台由 Win32 `FindFirstFile` / POSIX `dirent` 支撑）；`?` 可直接在这些 `Result<FsError>` API 间传播；
-- `std::random` 提供 `random_u32` / `random_u64` / `random_bool` / `random_below`，由 `riddle_random_u32` / `riddle_random_u64` 运行时垫片支撑（Windows 使用 `GetTickCount` 种子的 xorshift，POSIX 读取 `/dev/urandom`）；`std::ptr` 场景下同点原始指针可用 `==` / `!=` 按地址比较，`p == 0usize as *const T` 即空指针检查；
+- `std::fs::FsFile` 通过运行时提供的 `riddle_fs_*` 薄包装（避免与 `<stdio.h>` 原型冲突）访问 C `stdio`：`open` / `create` / `append` / `read` / `write` / `flush` / `read_to_string`，`Drop` 保证关闭句柄；`std::fs::{read_to_string, write}` 提供整文件便捷读写；`std::fs::{exists, metadata, read_dir}` 提供存在性检查、`FileMetadata { size, is_file, is_dir }` 元数据查询和目录条目枚举（`read_dir` 返回 `Vector<String>`，跨平台由 Win32 `FindFirstFile` / POSIX `dirent` 支撑）；`std::fs::{remove, rename, copy}` 提供删除、重命名与复制；`?` 可直接在这些 `Result<FsError>` API 间传播；
+- `std::io` 提供 `eprint` / `eprintln`（标准错误输出）与按行读取：`read_line(buffer)` 读取标准输入，`BufReader::read_line` 读取文件；两者把整行按 UTF-8 校验解码后再替换缓冲区，非法字节序列返回 `ReadError::InvalidUtf8` 并保持缓冲区为空，未读到任何字节返回 `ReadError::EndOfFile`；
+- `std::char` 为 `char` 提供 ASCII 判断与大小写转换、`to_digit` / `from_digit` 与空白判断（仅覆盖 ASCII）；
+- `std::process::exit(code)` 终止进程；
+- `std::mem::{swap, take}` 提供按引用交换与取值换默认值；
+- `std::random` 提供 `random_u32` / `random_u64` / `random_bool` / `random_below`，由 `riddle_random_u32` / `riddle_random_u64` 运行时垫片支撑（Windows 使用 `GetTickCount` 种子的 xorshift，POSIX 读取 `/dev/urandom`）；
 
 `Default`、`Hash`、标量格式化和基础集合/解析/时间 API 已经具备可执行行为；整数解析会拒绝空串、非法字符和超出目标范围的输入。
 
@@ -274,6 +293,10 @@ prelude 只直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`No
 - move checker 检查移动后使用；
 - 借用期间移动会报错；
 - 方法和函数返回值会传播引用来源，包含 `Option<&T>` 等泛型包装；元组和数组的来源按元素保留，模式解构不会让无关元素互相延长借用；
+- 具体 impl 的调用按过程间引用来源摘要实例化返回值：摘要里的借用带字段/下标路径（`&self.values[i]` 记为"接收者的 `values` 字段"），结构体字面量保留按字段的来源，`(ptr, len) as &[T]` 这类转换保留来源但清掉槽位结构。当接收者自身存有引用字段时（数组/切片迭代器的 `values: &[T]`），返回的元素引用挂到该字段存的 loan 上——调用自身的 `&mut self` 接收者借用随即到期，因此手动连续调用 `next` 合法，而元素引用存续期间修改底层数据仍会被拒绝；接收者没有可投影的存储来源时（自有数据的 `&self.value`），返回值沿用调用自身的接收者借用，与既有语义一致。
+- 摘要 origin 的路径会对照 impl 的 self 类型行走：穿过引用（或 `*mut T` 字段）前缀的步骤标记为"区域在接收者存储之外"，由此映射的 loan 永不与接收者自身存储的借用冲突（单侧标记即跳过），双侧都标记的照常检查。经原始指针（`unsafe` 豁免通道）取出的引用摘要不透明，按全部引用输入保守合并；借用空数组字面量（`&[]`）不别名任何数据，不置 opaque。
+- 泛型 bound 分发的 trait 调用使用"全 impl 摘要 join"；带 `#[flow = "behind_reference"]` 契约的 trait 方法在 join 之外还允许适配器摘要继承内层调用的来源（值形被调——闭包/可调用参数——的结果只可能来自其捕获与实参，不置 opaque）。契约在定点后逐 impl 验证：任何实现借用了自身存储即整体降级，回退保守合并；从未使用过的绑定以其绑定位置为最后使用（NLL 式），持有的 loan 随即过期；
+- 经引用写入（`*m = v`、`m.field = v`，其中 `m: &mut _`）按被指向的位置检查冲突：派生共享借用存续期间（包括借用被闭包持有的情况）写入会报 `E0300`，最后一次派生使用之后的写入不受影响；引用自身所在 loan 家族（含引用参数自带的种子借用）不计入冲突，与 `&mut self` 方法调用路径的既有语义一致；
 - 引用参数支持自动重借用，局部借用可在最后一次使用后结束；
 - 模式生成的字段重借用按投影分别追踪；子借用存活时冻结父可变引用，显式引用模式复制 `Copy` 内容而不移动引用；
 - 字段访问本身不会移动整个结构体；
@@ -302,6 +325,7 @@ prelude 只直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`No
 | 后端 | 状态 |
 |------|------|
 | C backend | CLI 可用：`--backend c`。输出使用 `rgc` 运行时 ABI；默认 provider 由 `clue` 选择，也支持自定义 provider |
+| MIR 解释器 | CLI 可用：`riddle run` / `riddle repl`。执行降级后的 MIR，标准库 `extern` 由原生 shim 支撑，用户 `extern "C"` 不支持 |
 
 C backend 实现统一的 `Backend` trait：`compile(&mut self, module: &Module) -> Result<String, Self::Error>`。
 
@@ -312,13 +336,16 @@ C backend 会把标量 std 运算 trait 的显式方法调用直接输出为带�
 | 工具 | 状态 |
 |------|------|
 | `riddle fmt` | 源码格式化 CLI，支持文件、标准输入、`--check`、缩进宽度和硬制表符；与 LSP 复用 formatter |
-| `riddlec` | 编译器 CLI，支持前端检查、MIR 降级和 C backend |
+| `riddle run` | 单文件解释执行 CLI（`--seed`、`--` 之后的程序参数），不需要 C 工具链 |
+| `riddle repl` | 交互式会话 CLI，由同一 MIR 解释器支撑，支持 `:help` / `:reset` / `:mir` / `:quit` |
+| `riddlec` | 编译器 CLI，支持前端检查、MIR 降级、`--emit mir` 和 C backend |
 | `riddle-lsp` | LSP 服务器，基于 `tower-lsp`，提供诊断、补全、悬停、签名帮助、符号导航、引用、重命名、格式化、Inlay Hint 和语义 Token，并识别过程宏命名空间 |
-| `clue` | 包管理器和项目构建器，支持项目、workspace、path/git/registry 依赖、锁文件、features、test/bench、打包发布与安装；二进制项目会保留 C 并生成本机可执行文件，库项目可生成 `.rmeta`、`.rlib`、静态库和动态库，过程宏依赖构建为宿主进程 |
+| `clue` | 包管理器和项目构建器，支持项目、workspace、path/git/registry 依赖、锁文件、features、test/bench、打包发布与安装、`clue doc` HTML 文档生成，以及库产物的全局构建缓存与同级依赖并行构建；二进制项目会保留 C 并生成本机可执行文件，库项目可生成 `.rmeta`、`.rlib`、静态库和动态库，过程宏依赖构建为宿主进程 |
 
 ## 当前限制
 
 - 标量类型限于 C11 可移植表示：`i128`、`u128`、`f16`、`f128` 在词法上可写，但类型检查会拒绝并给出诊断，语义上不存在这些宽类型；
+- 语言尚无命名生命周期语法。返回值借用已按三层精确化（见上文「所有权、移动和逃逸」）：具体 impl 调用按字段级来源摘要实例化；经 `Vector::get` 这类原始指针实现取元素的路径已改走切片访问（tree/hash 集合迭代器不再保守）；泛型 bound 分发依赖 trait 方法上的 `#[flow = "behind_reference"]` 契约——逐 impl 验证（存在借自身存储的实现即整体降级回保守合并）。泛型 bound 的关联类型绑定按结构归一（`Item = &T`、`Out = (T, i32)`、`Out = Vector<T>` 都会与具体 impl 的关联类型逐层匹配并推断其中的泛型参数），`T: Copy` 等 bound 也参与 move checker 的 Copy 判定，因此泛型体内匹配关联类型返回的 payload 并解引用（如 `match it.next() { Some(x) => *x }`）可正常编译与运行；
 - 进程参数 `std::env::args()` / `args_os()` 需要链接 `args_runtime.c`（见上文编译流程）；C 入口 `main` 无条件调用 `riddle_args_init`，因此参数在任意包中使用都可用；
 - 当前定位为单线程语言：线程 / 互斥锁 / 原子变量 / `async` / `await` / 网络尚未实现；开区间范围（`a..` / `..b`）、范围模式（`match` 中的 `a..=b`）、循环标签、`Rc`/`Arc`/`Cell`/`RefCell` 等智能指针与内部可变性也尚未实现；`match` guard 目前只在 `match` 中提供，`let` 解构与解构赋值已直接支持；
 - 数字解析不支持十六进制浮点；整数已支持 `0x` / `0o` / `0b` 前缀与 `_` 分隔符；

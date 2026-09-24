@@ -15,9 +15,10 @@ clue publish [--dry-run] [--registry <name>] [path]
 clue install [<package>@<version-req>] [--path <path>|--git <url>]
 clue uninstall <name>
 clue clean [path]
+clue doc [path] [-p <package>] [--open] [--document-private-items] [--no-std]
 ```
 
-全局 `--offline` 只使用缓存，`-j/--jobs` 控制并行任务数。`clue init` 在指定目录中初始化项目，`clue new` 创建新目录和项目；二者都会生成清单、入口源码和忽略文件。它们不会覆盖已有的 `Clue.toml` 或目标入口源码。`clue check` 检查项目但不生成 C，`clue build` 构建项目，`clue run` 先构建二进制或 example 再运行。
+全局 `--offline` 只使用缓存，`-j/--jobs` 控制并行任务数（同一包的同级依赖会在多个 worker 上构建，默认取机器的可用并行度）。`clue init` 在指定目录中初始化项目，`clue new` 创建新目录和项目；二者都会生成清单、入口源码和忽略文件。它们不会覆盖已有的 `Clue.toml` 或目标入口源码。`clue check` 检查项目但不生成 C，`clue build` 构建项目，`clue run` 先构建二进制或 example 再运行，`clue doc` 生成 HTML API 文档。
 
 二进制项目会按 bin 名称保留 `.clue/build/<bin-name>.c` 和默认的 `<bin-name>.runtime.c`，并在同一目录生成 `<bin-name>`；Windows 下扩展名为 `.exe`。`--release` 使用 `.clue/build/<target>/release`，与 debug 缓存隔离。设置 `CC` 时 Clue 会严格使用它，失败时不会静默回退；未设置时，会先尝试目标组件 `c-toolchain.toml` 中配置的编译器（由 `ridup target configure` 设置），再按候选顺序探测：Linux/macOS 目标依次尝试 `clang`、`cc`、`gcc`；Windows 目标依次尝试 `clang-cl`、`clang`、`cc`、`gcc`、`cl`（非 Windows 宿主上的交叉目标会把 `clang-cl` 放到最后），最后追加带版本后缀的 GCC/Clang。候选必须能够完成一次 C11 编译和链接。库项目生成 C、目标文件、`.rmeta` 和默认 `.rlib`；`crate-type` 还可请求静态库和动态库。
 
@@ -69,6 +70,8 @@ path = "src/main.rid"
 ```
 
 库项目使用 `[lib]` 和 `src/lib.rid`。如果清单没有显式目标，`clue build` 会按包类型寻找入口。二进制包依次检查 `src/main.rid`、`src/lib.rid`、`<package-name>.rid`、`main.rid`；库和过程宏包依次检查 `src/lib.rid`、`<package-name>.rid`、`lib.rid`、`src/main.rid`。
+
+`[package]` 还支持可选的 `description`、`authors` 和 `repository` 字段，`clue metadata` 会原样输出。
 
 旧项目仍可以在 `[package]` 中使用 `entry` 指定入口：
 
@@ -284,6 +287,19 @@ Clue 会展开入口文件声明的外部模块和锁定依赖，再运行完整
 ## 构建缓存
 
 Clue 会缓存构建指纹。`Clue.toml`、展开后的源码、运行时源码、当前 Riddle 编译器版本、目标平台，或者 C 编译器的实际路径与版本发生变化时会重新构建；没有变化且输出文件仍存在时会输出 `fresh`。成功的 C11 兼容性探测也按编译器身份缓存。
+
+库构建还会把产物（`.c`、目标文件、`.rlib`、`.rmeta`、静态库和动态库）发布到全局缓存 `$CLUE_HOME/cache/build/<triple>/<profile>/<fingerprint>/`，指纹相同的后续构建直接从那里恢复并输出 `clue: cached library`；同一内容的本地副本和 registry 依赖在一台机器上只编译一次。设置 `Clue.toml` 的 `[build] cache = false` 或环境变量 `CLUE_BUILD_CACHE=0` 可关闭全局缓存。二进制的 `fresh` 判定除可执行文件本身外，还会逐个确认依赖归档仍然存在。`clue clean` 只清理项目状态，不删除全局缓存。
+
+## 生成 API 文档
+
+```bash
+clue doc
+clue doc --open
+clue doc --document-private-items
+cd std && clue doc --no-std
+```
+
+`clue doc` 从 HIR 条目树和文档注释（`///`、`/** */`、行尾 `//<`）生成静态 HTML，写入项目的 `.clue/doc/index.html`，每个模块一页，带侧边栏、签名和 markdown-lite 正文（标题、列表、代码围栏）；`impl` 与 `trait` 块列出各自方法的文档注释。默认只收录 `pub` 条目，`--document-private-items` 包含其余条目，`--open` 生成后直接打开，`--no-std` 用于为 std 自身生成参考页（`std/` 目录带有自己的 `Clue.toml`）。签名渲染与 `riddle-lsp` 的悬停共用 `hir::render` 实现，因此文档页面和编辑器悬停显示同一份签名。
 
 ## 运行项目
 

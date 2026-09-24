@@ -19,6 +19,7 @@ riddlec [--verbose] [--no-std] [--backend c] [--target <triple>] [--output <file
 | `--backend c`, `-b c` | 使用 C backend 生成代码 |
 | `--target <triple>` | 选择受支持的目标平台 triple |
 | `--output <file>`, `-o <file>` | 指定输出文件 |
+| `--emit <c\|mir>` | 输出内容：默认的生成 C，或 `mir` 打印整个程序的 MIR |
 | `--version`, `-V` | 打印版本号和构建时 git commit hash |
 | `--help`, `-h` | 打印帮助 |
 
@@ -37,6 +38,39 @@ cat src/main.rid | riddle fmt --emit stdout
 `--tab-size <n>` 设置缩进宽度，`--hard-tabs` 使用制表符。LSP 的 `textDocument/formatting` 复用同一实现。
 
 CLI 在解析失败时报告行列、返回非零状态并保持文件不变；编辑器中的 LSP 请求仍可对未完成源码提供格式化结果。
+
+## riddle run
+
+`riddle run` 编译单个文件并交给内置的 MIR 解释器执行，不需要 C 工具链：
+
+```bash
+riddle run src/main.rid
+riddle run src/main.rid -- arg1 arg2
+riddle run src/main.rid --seed 7
+```
+
+| 参数 | 作用 |
+|------|------|
+| `<FILE>` | 要运行的单个 `.rid` 文件 |
+| `[PROGRAM_ARGS]...` | `--` 之后的参数原样传给程序的 `std::env::args` |
+| `--seed <SEED>` | `std::random` 的种子，`0` 表示按时钟播种 |
+
+解释器执行的是降级之后的 MIR，也就是 C 后端的同一份输入，因此两侧语义对齐：整数运算按 wrapping 回绕，除零与 `MIN / -1` 触发 trap，移位按宽度掩码，浮点转整数饱和截断，下标越界调用 `panic`，裸指针 `==` 按地址比较，`panic!` 输出与编译产物一致并把位置映射回真实文件（穿过标准宏展开、映射进随编译器附带的 std 区域）。程序退出码镜像本机可执行文件的行为。
+
+标准库声明的 `extern` 由内置的原生 shim 提供（`std::fs`、时间、随机数、进程与标准 I/O，以及 `rgc_*` 分配门面）。用户代码自己声明的 `extern "C"` 函数没有实现：调用时解释器报告 `interpreter does not support extern` 并以非零状态退出，需要真实 C 符号时使用 `clue run` 或 `riddlec` 加系统 C 编译器。
+
+## riddle repl
+
+`riddle repl` 用同一个解释器启动交互会话：
+
+```bash
+riddle repl
+```
+
+- 顶层定义（`fun`、`struct`、`use` 等）累积进会话；
+- `let` 与表达式行写进一个自动生成的 `main`，每次求值都重新编译并重跑整个会话，因此副作用会重放；
+- 表达式打印自己的 `{:?}` 值并绑定到 `__`，后续行可以直接引用；
+- 命令为 `:help`、`:reset`（开始新的会话）、`:mir`（打印最近一次编译的 MIR）和 `:quit`。
 
 ## C backend
 

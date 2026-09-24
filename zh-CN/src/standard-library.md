@@ -36,9 +36,9 @@ fun main() {
 }
 ```
 
-格式宏当前支持多个 `{}` / `{:?}`、`{0}` 位置参数（可重复引用任意参数）、`{name}` 命名捕获（隐式读取调用处的同名局部变量）、尾随逗号以及 `{{` / `}}`；格式串的语法、说明符合法性与命名捕获的存在性会在编译期校验，但位置索引是否越界、实参数量是否足够，以及未实现的宽度、对齐和填充说明符不会在编译期拒绝——例如 `{1}`、参数不足或 `{:>5}` 会静默通过并在运行时输出空内容。
+格式宏当前支持多个 `{}` / `{:?}`、`{0}` 位置参数（可重复引用任意参数）、`{name}` 命名捕获（隐式读取调用处的同名局部变量）、尾随逗号以及 `{{` / `}}`；说明符只支持空说明符和 `:?`。格式串的语法、说明符合法性、命名捕获的存在性、位置索引越界与实参数量不足都会在编译期拒绝——例如 `{:>5}`、越界的 `{1}` 或缺少实参都会直接产生编译错误，不会静默通过或延迟到运行时。
 
-`print!` / `println!` 通过隐藏的标准库输出入口和 `std::fmt::{Debug, Display, Formatter, Result}` 支持字符串、布尔、字符、整数和浮点标量；`Display` 输出 UTF-8 字符，浮点数固定输出 6 位小数。字符串和字符的 `Debug` 输出会添加引号并转义 `\\`、`\n`、`\r`、`\t`、`\0`；字符串转义双引号 `\"`，字符转义单引号 `\'`。格式化 trait 不在 prelude 中，底层输出入口不属于用户 API。
+`print!` / `println!` 通过隐藏的标准库输出入口和 `std::fmt::{Debug, Display, Formatter, Result}` 支持字符串、布尔、字符、整数和浮点标量；`Display` 输出 UTF-8 字符，浮点数固定输出 6 位小数，其中 `NaN` 输出 `NaN`、正负无穷输出 `inf` / `-inf`、负零保留符号，整数部分超出 `u64` 的浮点数按精确十进制展开（该范围内的浮点数都是整数，小数部分恒为 `.000000`）。字符串和字符的 `Debug` 输出会添加引号并转义 `\\`、`\n`、`\r`、`\t`、`\0`；字符串转义双引号 `\"`，字符转义单引号 `\'`。格式化 trait 不在 prelude 中，底层输出入口不属于用户 API。
 
 `panic!()` 使用消息 `explicit panic`；`panic!("value={}", value)` 与其他格式宏共享编译期格式串检查，并保留宏调用位置用于 panic 诊断。底层 `std::panic` 模块及其 `panic(message)` 入口仅供标准库和编译器使用，不会进入普通补全。
 
@@ -97,10 +97,10 @@ fun main() {
 | `std::vector::Vector<T>` | `new`、`len`、`capacity`、`is_empty`、`push`、`pop`、`insert`、`remove`、`get`、`get_mut`、`swap`、`sort`、`contains`、`retain`、`clear`、`as_slice`、`as_ptr`、`iter`、`iter_mut`、`from_iterator`、`from_elem`、读写下标和按值迭代 |
 | `std::collections` | `HashMap`、`HashSet`（键需 `Hash + Eq`）、`TreeMap`、`TreeSet`（键需 `Ord`），四类集合均提供 `remove`；`HashMap` 另有 `get_or_insert` 与 Rust 风格的 `entry(key)`（返回 `Entry` 枚举：`Occupied`/`Vacant`），配合 `or_insert` / `or_insert_with` / `or_default` 实现"不存在则插入"惯用法 |
 | `std::iter` | `Iterator`、`IntoIterator` 协议；`Iterator` 的默认方法含 `map`、`filter`、`chain`、`inspect`、`count`、`nth`、`fold`、`for_each`、`all`、`any`、`find`、`position` 和 `collect`；`std::iter` 另提供急切的 `map_into` / `filter_into`，适配器 `enumerate` / `take` / `skip` / `take_while` / `skip_while` / `zip`，`min` / `max`，以及 `DoubleEndedIterator` |
-| `std::slice` | `SliceIter`、`SliceIterMut`，以及 `[T]` 的长度、边界检查访问、原始指针访问和借用迭代 |
+| `std::slice` | `SliceIter`（实现 `DoubleEndedIterator`，`next_back` 支持从尾部遍历）、`SliceIterMut`，以及 `[T]` 的长度、边界检查访问、原始指针访问和借用迭代 |
 | `std::array` | 按值、共享借用和可变借用数组迭代器 |
 | `std::fs` | `FsFile`（`open`、`create`、`append`、`read`、`write`、`flush`、`read_to_string`）、`exists`、`metadata`、`read_dir`、`remove`、`rename`、`copy`，以及整文件 `read_to_string` / `write` |
-| `std::io` | `eprint`、`eprintln`、`read_line`、`BufReader` |
+| `std::io` | `eprint`、`eprintln`、`read_line`（标准输入按行读取并校验 UTF-8）、`BufReader`（文件缓冲行读取，同样校验 UTF-8）；非法 UTF-8 字节序列返回 `ReadError::InvalidUtf8` 并保持缓冲区为空 |
 | `std::char` | ASCII 判断与大小写转换、`to_digit`、`from_digit`、空白判断 |
 | `std::process` | `exit(code)` |
 | `std::mem` | `swap`、`take` |

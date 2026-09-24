@@ -83,7 +83,7 @@ fun demos() {
 
 `values[index]` 下标访问越界时会调用 `panic` 并终止进程；需要可恢复的访问时使用 `get`。按值 `for` 会消耗向量并逐个产出元素（见[闭包与迭代器](./functional.md#迭代协议)）。
 
-`push` / `insert` / `remove` 可能搬移缓冲区。持有元素引用或切片时修改向量（`push` / `insert` / `remove` 会搬移缓冲区），得到的是指向已释放缓冲区的悬垂引用；借用检查器不会拦截这类修改，与 Rust 不同。先修改、再取引用，是唯一安全的顺序。
+`push` / `insert` / `remove` 可能搬移缓冲区。持有元素引用或切片时修改向量会得到指向已释放缓冲区的悬垂引用，借用检查器会拒绝这类修改：结构修改需要 `&mut`，与未结束的元素借用（`get` / `as_slice` / 下标 / 迭代器，包括被闭包捕获后仍在存活期的借用）冲突时报 `E0300` / `E0302` / `E0303`。先修改、再取引用，或让借用先于修改结束（结束点是该借用的最后一次使用），是安全的顺序。经 `as_ptr` 逃逸到裸指针的访问不受借用检查器保护，仍属 `unsafe` 契约。
 
 ## Map 与 Set
 
@@ -111,7 +111,7 @@ fun main() {
 | `TreeMap<K, V>` | `Ord` | 红黑树，键有序 |
 | `TreeSet<T>` | `Ord` | 只有键的有序集合 |
 
-四个类型都提供 `new`、`insert`、`len` 和 `is_empty`；映射类型另有 `get` / `contains_key`，集合类型另有 `contains`，当前没有 `clear`。键要求决定选择：需要排序时用 `Tree*`，否则优先 `Hash*`。当前类型名就是这四个完整名称，不提供 `Map` / `Set` 别名。
+四个类型都可以用 `for` 按引用迭代：`HashSet` / `TreeSet` 产出 `&T`（`Hash*` 按插入序，`Tree*` 按键序），映射类型产出 `(&K, &V)`。四个类型都提供 `new`、`insert`、`len` 和 `is_empty`；映射类型另有 `get` / `contains_key`，集合类型另有 `contains`，当前没有 `clear`。`TreeMap` 另有 `keys()` / `values()` 视图迭代器与 `range(&start, &end)`（含 start、不含 end 的有序区间迭代）。键要求决定选择：需要排序时用 `Tree*`，否则优先 `Hash*`。当前类型名就是这四个完整名称，不提供 `Map` / `Set` 别名。
 
 ## 数组与切片
 

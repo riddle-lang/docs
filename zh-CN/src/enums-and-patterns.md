@@ -49,7 +49,8 @@ fun describe(message: Message) -> i32 {
 - 标识符绑定与 `mut` 绑定；
 - 字面量和路径；
 - 元组、结构体与枚举变体；
-- `&pattern` 与 `&mut pattern` 引用模式。
+- `&pattern` 与 `&mut pattern` 引用模式；
+- `match` arm 顶层的或模式 `A | B`（见下文）。
 
 结构体模式可以只列出需要的字段：
 
@@ -76,6 +77,28 @@ let Some(value) = option else {
 let (a, b) = pair;             // OK
 let Point { x, y } = point;    // OK
 ```
+
+## 或模式
+
+`match` arm 的顶层可以用 `|` 分隔多个备选模式，任一备选命中就选中该 arm。第一个备选之前的 `|` 也可以写：
+
+```riddle
+enum Level { Low, Mid, High, Critical }
+
+fun weight(level: Level) -> i32 {
+    match level {
+        Level::Low | Level::Mid => 1,
+        | Level::High => 2,
+        Level::Critical => 3,
+    }
+}
+```
+
+每个备选独立检查与降级：穷尽性矩阵按备选展开成多行，备选条件与 arm guard 在 MIR 中用按位或折叠。三条限制：
+
+- 备选不能绑定变量。arm 体必须看到同一组绑定，所以 `Some(x) | None => …` 报告 `E0010`，诊断会建议在 arm 体内绑定或拆分 arm；
+- 或模式只属于 `match` arm 的顶层。写在 `let` 中会直接报错（`let 1 | 2 = x`），`if let A | B = v` 无法解析；
+- 嵌套备选（`Some(1 | 2)`）由解析器拒绝。
 
 ## 穷尽性检查
 
