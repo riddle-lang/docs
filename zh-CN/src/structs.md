@@ -106,3 +106,80 @@ fun main() {
 ```
 
 只要引用没有逃逸当前作用域，`foo` 仍然可以保持栈分配。
+
+## mut 字段
+
+默认情况下，`&T` 不允许写入它指向的值：在 `&self` 方法里给字段赋值、或对字段调用需要 `&mut self` 的方法，都会报 `E0309`。
+
+如果一个字段需要在共享引用下也能改，就在声明处加 `mut`：
+
+```riddle
+struct Counter {
+    mut hits: i32,
+    name: i32,
+}
+
+impl Counter {
+    fun bump(&self) {
+        self.hits += 1;   // 可以：hits 声明为 mut
+    }
+
+    fun rename(&self) {
+        self.name = 1;    // error[E0309]：name 没有声明 mut
+    }
+}
+```
+
+可写性是**字段自身**的属性，与到达它的路径无关：`self.a.b` 中只要 `a` 或 `b` 有一处声明为 `mut`，整条路径就可写。
+
+`mut` 字段上可以取 `&mut`，但只限于**它所在的那次调用**：
+
+```riddle
+fun add_to(target: &mut i32) {
+    *target += 1;
+}
+
+impl Counter {
+    fun via_argument(&self) {
+        add_to(&mut self.hits);   // 可以：作为实参
+    }
+
+    fun via_binding(&self) {
+        let target = &mut self.hits;   // error[E0309]：不能绑出来
+    }
+}
+```
+
+`self.log.push(item)` 这种对字段调用 `&mut self` 方法的形式同样可以——接收者借用和实参借用一样，只在调用期间存在。把 `&mut` 绑出来或返回则不行：它的生命周期会超出这次调用，可能出现两个同时存在的 `&mut`。
+
+反过来，调用 `&self` 方法时会检查它可能写入的那些 `mut` 字段。如果此时还持有指向字段**内部**的借用，调用会被拒绝：
+
+```riddle
+struct Inner { value: i32 }
+struct Holder { mut inner: Inner }
+
+impl Holder {
+    fun bump(&self) {
+        self.inner.value += 1;
+    }
+}
+
+fun f() {
+    let holder = Holder { inner: Inner { value: 0 } };
+    let held = &holder.inner.value;
+    holder.bump();          // error[E0300]：写入可能搬动 held 指向的存储
+    let _ = *held;
+}
+```
+
+借整个值或借字段本身都没有问题，而且能看到更新后的结果：
+
+```riddle
+let counter = Counter { hits: 0, name: 0 };
+let view = &counter;
+counter.bump();             // 可以
+print!("{}", view.hits);    // 输出更新后的值
+```
+
+`mut` 字段是类型公开契约的一部分：给字段加 `mut` 是破坏性变更，调用方原本可以假设它不会在共享引用下改变。多个别名对同一 `mut` 字段的写入是"最后写入生效"，不提供顺序或原子性保证。
+

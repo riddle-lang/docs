@@ -97,7 +97,7 @@ source = "runtime/custom_gc.c"
 
 ```c
 void rgc_init(void *stack_bottom);
-void *rgc_alloc(size_t size);
+void *rgc_alloc(size_t size, const uint32_t *descriptor);
 void *rgc_realloc(void *ptr, size_t size);
 void rgc_free(void *ptr);
 void rgc_collect(void);
@@ -105,7 +105,9 @@ void rgc_collect(void);
 
 Clue 会单独链接平台进程参数运行时；自定义内存运行时不需要实现 `std::env` 的参数函数。
 
-`rgc_alloc` 返回的地址必须满足普通 C 对象的对齐要求，并且在引用仍可能存在时不能移动。`rgc_realloc` 与 `rgc_free` 供标准库容器（如 `Vector`）显式管理缓冲区：`rgc_realloc` 迁移并保留原内容，`rgc_free` 立即释放且必须接受空指针；基于 malloc 的分配器可直接委托给 `realloc`/`free`。无回收分配器可以忽略 `stack_bottom`，并把 `rgc_collect` 实现为空函数。当前 ABI 不支持移动式 GC、finalizer 或多线程栈注册。
+`rgc_alloc` 返回的地址必须满足普通 C 对象的对齐要求，并且在引用仍可能存在时不能移动。`rgc_realloc` 与 `rgc_free` 供标准库容器（如 `Vector`）显式管理缓冲区：`rgc_realloc` 迁移并保留原内容，`rgc_free` 立即释放且必须接受空指针；基于 malloc 的分配器可直接委托给 `realloc`/`free`。无回收分配器可以忽略 `stack_bottom`，并把 `rgc_collect` 实现为空函数。`rgc_alloc` 的第二个参数是编译器发布的布局描述符：一个扁平的 `uint32_t` 数组，`descriptor[0]` 是 GC 指针槽的数量，`descriptor[1 + i]` 是第 i 个槽在载荷内的字节偏移。收集器只标记这些字，其余字节不再逐字扫描，因此"看起来像地址的整数"不会再让对象存活；传 `NULL` 表示布局未知，退回逐字保守扫描（永远安全，只是可能多留对象）。运行时在注册时校验描述符（槽数量与偏移越界），不合格的描述符降级为 `NULL`。分配器按 16 字节尺寸类从 64 KiB 的 chunk 里切分 1 KiB 以内的小对象，更大的对象直接走 `malloc`；`rgc_free` 把块还回它来的那条路径。收集统计通过 `rgc_stat_*` 提供（存活字节与对象、分配总数、收集次数、精确/保守对象数与载荷扫描数、上轮标记对象数、标记与清扫耗时、向系统申请的字节数与 chunk 数），`rgc_is_allocated` 用于测试观察回收结果；标记来源计数与上轮回收量随 `RGC_DEBUG_STATS=1` 的每次收集输出打印。
+
+当前 ABI 不支持移动式 GC、finalizer 或多线程栈注册。
 
 要像 Rust 一样完全关闭 GC，在二进制包中设置：
 
@@ -114,7 +116,7 @@ Clue 会单独链接平台进程参数运行时；自定义内存运行时不需
 gc = false
 ```
 
-这不是把 `rgc_collect` 留空，而是从生成结果中移除收集器、根扫描和全部 `rgc_*` 符号，改用 `riddle_alloc`、`riddle_realloc`、`riddle_free` 管理有所有者的堆值。闭包环境和容器缓冲区在所有者结束时确定性释放；需要让栈上值活过其作用域的引用会报告 E0310。输入引用仍可在不延长生命周期的情况下转发。`gc = false` 不能与 `source` 同时声明。
+这不是把 `rgc_collect` 留空，而是从生成结果中移除收集器、根扫描和全部 `rgc_*` 符号，改用 `riddle_alloc`、`riddle_realloc`、`riddle_free` 管理有所有者的堆值。标准库共享的无类型字节存储改用 `riddle_alloc_bytes`，两种运行时都提供这个入口，因此同一份 std 声明在两种模式下都成立。闭包环境和容器缓冲区在所有者结束时确定性释放；需要让栈上值活过其作用域的引用会报告 E0310。输入引用仍可在不延长生命周期的情况下转发。`gc = false` 不能与 `source` 同时声明。
 
 运行时属于最终进程，因此 `[runtime]` 只允许出现在二进制包；库和依赖包只生成 ABI 调用，不能选择运行时。
 

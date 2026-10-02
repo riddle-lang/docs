@@ -1,6 +1,6 @@
 # Riddle 错误码参考
 
-## 类型检查 (E0001–E0013, E0031–E0047, E0054–E0058, E0060–E0067, E0072, E0391)
+## 类型检查 (E0001–E0014, E0031–E0047, E0054–E0058, E0060–E0067, E0072, E0391)
 
 <a id="e0001"></a>
 ### E0001 — 类型不匹配
@@ -101,6 +101,17 @@ let z = 42i99;   // E0011: unknown integer literal suffix `i99`
 let p = Point { x: 1, y: 2 };
 p.missing();  // E0013: unknown method `missing` on type Point
 ```
+
+<a id="e0014"></a>
+### E0014 — 枚举具名变体字段上的 `mut`
+`mut` 字段表示"经共享引用仍可写"，但变体的字段只能通过模式到达，而模式绑定是独立局部变量——写入无法经由对枚举的共享引用传递。因此变体字段上的 `mut` 会被解析但不起作用，编译器直接报错：
+```riddle
+enum Shape {
+    Circle { mut radius: i32 },  // E0014
+    Square { side: i32 },
+}
+```
+把字段放在结构体里，或改用 `&mut` 接收者。
 
 <a id="e0031"></a>
 ### E0031 — 给不可变绑定赋值
@@ -656,6 +667,50 @@ fun main() {
 }
 ```
 保留引用并通过它访问，或只在确实允许按位复制时为类型实现 `Copy`。`*reference = value` 是写回原位置，不属于此错误。
+
+<a id="e0309"></a>
+### E0309 — 通过共享引用写入
+`&T` 只允许读取它指向的值。字段访问和下标会隐式解引用引用，所以经共享引用写入与显式 `*r = value` 一样被拒绝：
+```riddle
+struct Sample { n: i32 }
+
+fun mutate(r: &Sample) {
+    r.n = 5;  // E0309
+}
+```
+同一条规则也覆盖 `&self` 接收者：在 `&self` 方法里给字段赋值、或对字段调用需要 `&mut self` 的方法（`self.buffer.push(..)`）都取不到可变访问。把接收者或参数改成 `&mut`，或改写为返回自有值。通过裸指针（`unsafe`）写入不受此检查约束，那属于 `unsafe` 的逃生通道。
+
+声明为 `mut` 的字段不受此错误约束：
+
+```riddle
+struct Counter { mut hits: i32, name: i32 }
+
+impl Counter {
+    fun bump(&self) {
+        self.hits += 1;   // 可以
+        self.name = 1;    // E0309
+    }
+}
+```
+
+`mut` 字段上取 `&mut` 时，这个错误还限制它的**位置**：可以被当作调用的接收者或实参，但绑到名字、作为返回值、或存进其它聚合体都会报 E0309，因为那样的借用会超出这次调用：
+
+```riddle
+fun add_to(target: &mut i32) {
+    *target += 1;
+}
+
+impl Counter {
+    fun ok(&self) {
+        add_to(&mut self.hits);        // 可以
+    }
+
+    fun rejected(&self) {
+        let target = &mut self.hits;   // E0309
+        *target = 1;
+    }
+}
+```
 
 <a id="e0310"></a>
 ### E0310 — 无 GC 模式下引用逃出栈存储
