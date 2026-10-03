@@ -175,7 +175,9 @@ Zed 适配当前以 Dev Extension 方式安装。先把 `riddle-zed.zip` 解压�
 }
 ```
 
-修改配置后，在命令面板运行 **language server: restart**。Zed 和 Helix 当前复用 Rust Tree-sitter grammar 作为结构化回退；Riddle 专用的标识符分类由 `riddle-lsp` 语义 Token 提供。
+修改配置后，在命令面板运行 **language server: restart**。Zed 和 Helix 当前复用 Rust Tree-sitter grammar 作为结构化回退；Riddle 专用的标识符分类由 `riddle-lsp` 语义 Token 提供，注释（含 `///`、`/** */`、`/* */`）与跨行 token 也由语义 Token 覆盖，而 Tree-sitter 回退按 Rust 语法近似处理。
+
+`Clue.toml` 由 VS Code 与 Helix 适配按独立语言路由给同一个服务器；Zed 与 JetBrains 适配目前只把 `.rid` 文件交给服务器，因此这两个编辑器里清单文件的诊断、补全与悬停不可用（原因见各自的适配说明）。
 
 ## 当前能力
 
@@ -189,25 +191,27 @@ Zed 适配当前以 Dev Extension 方式安装。先把 `riddle-zed.zip` 解压�
 | 跨模块返回类型和调用参数名 Inlay Hint | 支持 |
 | Clue 项目中的关键字、类型、全局项、局部变量、模式绑定和导入别名补全 | 支持 |
 | 字段、实例方法、模块项、枚举变体和关联函数补全 | 支持 |
-| 诊断驱动的快速修复（加 `mut`、补缺失字段、补 match 分支、删除空 `use`、`drop` 重写、名字纠错与自动导入）及 `source.organizeImports` | 支持 |
+| 诊断驱动的快速修复（加 `mut`、补缺失字段、补 match 分支、删除空 `use`、`drop` 重写、名字纠错与自动导入）及 `source.organizeImports`、`source.addMissingImports`、`source.fixAll` | 支持；四种代码动作种类都在 `codeActionProvider` 中声明，编辑器才能在「源代码操作」菜单中列出 |
 | 跨文件补全（包含已打开文件的未保存内容） | 支持 |
 | 公开符号自动导入、重名路径区分和确定性排序 | 支持 |
 | 函数签名、推断类型和 struct/enum 声明 Hover（最多 5 个顶层字段或变体，枚举 payload 完整）；方法调用显示实例化后的签名（替换过的接收者与返回类型） | 支持 |
-| 内联提示：`let` 绑定推断类型、lambda 参数推断类型、多行链式调用每级结果类型、调用参数名 | 支持 |
+| 内联提示：`let` 绑定推断类型、lambda 参数推断类型、多行链式调用每级结果类型、调用参数名 | 支持；参数名提示按括号深度切分实参，多 token 实参（如 `f(a + b, c)`）不会错位 |
 | impl 块内补全缺失的 trait 方法（携带签名的 snippet）与关联类型 | 支持 |
-| 结构化选择范围（selectionRange）、`mod` 声明的模块文件链接、pull 诊断 | 支持 |
-| `Clue.toml` 清单：未知键/类型/semver/依赖规则诊断（CLUE0002–CLUE0004）、节与键补全、键悬停、节与键符号 | 支持 |
+| 结构化选择范围（selectionRange）、`mod` 声明与 `use` 首段的模块文件链接、pull 诊断 | 支持 |
+| `Clue.toml` 清单：未知键/类型/semver/依赖规则诊断（CLUE0002–CLUE0004）、节与键补全、键悬停、节与键符号 | 支持；`[dependencies.<名>]` 与 `[[bin]]`/`[[example]]`/`[[test]]`/`[[bench]]` 的子键（`path`、`version`、`git`、`optional`、`required-features` 等）同样补全 |
 | 跳转定义（包含未打开的 Clue 模块） | 支持 |
 | 跳转声明与跳转类型定义 | 支持 |
 | trait 与 trait 方法的跳转实现 | 支持 |
-| 静态调用层级与 trait/实现类型层级 | 支持 |
-| 项目级查找引用与重命名（包含未保存文件、未打开模块、字段、trait 方法和导入别名） | 支持 |
+| 静态调用层级与 trait/实现类型层级 | 支持；类型层级依赖客户端的动态注册能力（当前依赖的 `lsp-types` 版本没有静态声明字段），不支持动态注册的客户端看不到该功能 |
+| 项目级查找引用与重命名（包含未保存文件、未打开模块、字段、trait 方法和导入别名） | 支持；不可重命名的目标会返回参数错误而不是空结果 |
 | 签名帮助与当前参数跟踪 | 支持 |
-| 文档符号与工作区符号搜索 | 支持 |
-| 文档引用高亮与代码折叠 | 支持 |
-| 增量文档同步、过期分析取消与 Semantic Token delta | 支持 |
-| 编辑器外部 `.rid` 与 `Clue.toml` 文件变更 | 支持动态监听 |
-| 格式化 | 支持 |
+| 文档符号与工作区符号搜索 | 支持；文档符号包含 `impl` 块（以被实现的类型命名，trait 名作为 detail，方法/常量/关联类型作为子项），`range` 为条目整体范围、`selectionRange` 为标识符范围 |
+| 文档引用高亮与代码折叠 | 支持；折叠区分花括号区块、连续注释行与顶层 `use` 组 |
+| 增量文档同步、过期分析取消与 Semantic Token delta | 支持；无法映射的增量修改不会被静默清除诊断，而是标记为不同步并报告 `LSP0001` |
+| 编辑器外部 `.rid`、`Clue.toml` 与 `Clue.lock` 文件变更 | 支持动态监听 |
+| 格式化与区域格式化 | 支持 |
+| 工作区级 pull 诊断（`workspace/diagnostic`） | 支持，含未打开模块与本地依赖 |
+| 位置编码协商 | 支持 UTF-16 / UTF-8 / UTF-32；客户端未提供三者之一时服务器直接报错而不是返回错误坐标 |
 
 工作区中的 Clue 项目会建立内存索引。补全可通过独立的 `use path;` 编辑自动导入可达的公开符号；调用层级只包含编译器能够静态解析的目标，不推测函数指针、闭包或 Trait 的运行时分派。
 

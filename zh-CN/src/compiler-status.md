@@ -344,7 +344,7 @@ C backend 会把标量 std 运算 trait 的显式方法调用直接输出为带�
 | `riddle run` | 单文件解释执行 CLI（`--seed`、`--` 之后的程序参数），不需要 C 工具链 |
 | `riddle repl` | 交互式会话 CLI，由同一 MIR 解释器支撑，支持 `:help` / `:reset` / `:mir` / `:quit` |
 | `riddlec` | 编译器 CLI，支持前端检查、MIR 降级、`--emit mir` 和 C backend |
-| `riddle-lsp` | LSP 服务器，基于 `tower-lsp`，提供诊断、补全、悬停、签名帮助、符号导航、引用、重命名、格式化、Inlay Hint 和语义 Token，并识别过程宏命名空间 |
+| `riddle-lsp` | LSP 服务器，基于 `tower-lsp`，提供诊断、补全、悬停、签名帮助、符号导航、引用、重命名、格式化与区域格式化、Inlay Hint、语义 Token 与工作区 pull 诊断，并识别过程宏命名空间 |
 | `clue` | 包管理器和项目构建器，支持项目、workspace、path/git/registry 依赖、锁文件、features、test/bench、打包发布与安装、`clue doc` HTML 文档生成，以及库产物的全局构建缓存与同级依赖并行构建；二进制项目会保留 C 并生成本机可执行文件，库项目可生成 `.rmeta`、`.rlib`、静态库和动态库，过程宏依赖构建为宿主进程 |
 
 ## 当前限制
