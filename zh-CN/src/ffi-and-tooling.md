@@ -1,33 +1,70 @@
 # FFI 与底层工具链
 
-本页汇总当前仓库里和语言使用直接相关的工具、后端和 FFI 能力。
+本页覆盖直接操作编译器与运行时的部分：`riddlec`、`riddle fmt/run/repl`、C 后端产物、`extern "C"`、GC 运行时与解释器。项目级构建、依赖与目标平台配置见[Clue 构建器](./clue.md)。
 
 ## riddlec
 
-`riddlec` 是当前命令行编译器入口：
+`riddlec`是单文件级编译器：读入 Riddle 源码，跑完整管线，按需要打印 MIR 或写出 C。
 
 ```bash
 riddlec [--verbose] [--no-std] [--backend c] [--target <triple>] [--output <file>] <file>...
 ```
 
-常用参数：
+| flag | 短 | 取值 | 说明 |
+| --- | --- | --- | --- |
+| `--verbose` | `-v` | — | 逐阶段状态打到 stdout |
+| `--no-std` | — | — | 不加载随编译器附带的 std |
+| `--backend` | `-b` | `c` | 生成 C 并写文件 |
+| `--emit` | — | `c` / `mir` | 见下 |
+| `--target` | — | triple | 目标平台，同时决定 `usize`/`isize` 的宽度；缺省是宿主或`RIDDLE_TARGET` |
+| `--output` | `-o` | 路径 | 输出文件 |
+| `--version` | `-V` | — | 版本号加构建时的 git hash |
+| `--help` | `-h` | — | 帮助 |
 
-| 参数 | 作用 |
-|------|------|
-| `--verbose`, `-v` | 打印 parse、HIR lower、type check、move/escape analysis、MIR lowering 的状态 |
-| `--no-std` | 不加载随编译器附带的标准库 |
-| `--backend c`, `-b c` | 使用 C backend 生成代码 |
-| `--target <triple>` | 选择受支持的目标平台 triple |
-| `--output <file>`, `-o <file>` | 指定输出文件 |
-| `--emit <c\|mir>` | 输出内容：默认的生成 C，或 `mir` 打印整个程序的 MIR |
-| `--version`, `-V` | 打印版本号和构建时 git commit hash |
-| `--help`, `-h` | 打印帮助 |
+`--emit`与`--backend`互斥，两者的行为也不对称：
 
-`riddlec` 会自动把 `std/lib.rid` 拼到用户源码后面，因此基础 lang trait 不需要手动引入。
+- `--emit mir`把整个程序的 MIR 打印到 stdout，不写文件，退出码 0，输出以`module main {`开头。
+- `--emit c`与`--backend c`是同一条代码生成路径：写到`-o`，没给`-o`就写到第一个输入文件同名的`.c`。两个 flag 互斥，所以`--emit c`不会带上`--backend`，但生成结果与之一致，`main` 缺失同样在这一阶段报`E0401`。
+
+其余行为：
+
+- 多个`FILES`会拼成一个包（用换行分隔），各自保留 source map，因此文件之间可以互相引用；入口是第一个文件。目录不能作为输入。
+- `-o`以`.c`结尾就原样使用；其它扩展名追加`.c`（`-o app.h`写出`app.h.c`）；不给`-o`时用第一个输入文件的 stem 加`.c`，写在当前工作目录。
+- 没有`main`时`--backend`先报`error[E0401]`，消息为 “no `main` function found in the entry package”，不写文件。
+- `-v`按顺序打印`target: <triple>`以及`parse`、`macro expansion`、`hir lower`、`type check`、`move + escape analysis`、`MIR lowering`的状态（`ok`/`failed`/`skipped`）；parse 失败时后面几项直接打印为`skipped`。
+- 诊断只有 rustc 风格的人类可读文本，写 stderr，末尾是`error: aborting due to N previous error(s)`。没有 JSON 输出选项。
+
+退出码：
+
+| 情形 | 退出码 |
+| --- | --- |
+| 成功 | 0 |
+| 编译或检查有错误、没有输入文件、输入文件读不到、工作线程 panic | 1 |
+| 参数错误（flag 互斥、非法`--target`等） | 2 |
+
+`--target`恰好支持七个 triple：`x86_64-unknown-linux-gnu`、`aarch64-unknown-linux-gnu`、`i686-unknown-linux-gnu`、`x86_64-pc-windows-msvc`、`i686-pc-windows-msvc`、`aarch64-pc-windows-msvc`、`aarch64-apple-darwin`。传给`--target`的其它值由 clap 报参数错误（退出码 2），`RIDDLE_TARGET`里的非法值走普通错误路径。
+
+选中的 triple 同时给出 `usize`/`isize` 的宽度：`i686-*` 下 `4294967296usize` 报 `E0011`，因为生成的 C 要把它装进 32 位的 `size_t`；在 64 位宿主上交叉编译到 `i686-*` 也同样拒绝，宿主宽度不再参与判断。`riddle run`和`riddle repl` 不选 triple——MIR 解释器在任何宿主都把 `usize` 当成一个 8 字节字，所以那条路径固定按 64 位检查。
+
+环境变量：`RIDDLE_TARGET`在没给`--target`时决定目标；设置了`RIDDLEC_PHASE_TIMING`（值任意）时每个阶段的耗时打印到 stderr。
 
 ## riddle fmt
 
-`riddle fmt` 使用与 LSP 相同的源码格式化器：默认格式化文件，也可以从标准输入读取，或用 `--check` 检查格式而不修改文件。
+`riddle fmt`复用`riddlec`的格式化器，编辑器里的`textDocument/formatting`也是同一份实现。
+
+| flag | 取值 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| `--emit` | `files` / `stdout` / `check` | `files` | 写回文件、打到 stdout、只检查 |
+| `--check` | — | 关 | 等价于`--emit check`，与`--emit`互斥 |
+| `--tab-size` | 整数 | 4 | 缩进宽度，最小 1 |
+| `--hard-tabs` | — | 关（用空格） | 用制表符缩进 |
+| `[FILES]...` | 路径 | 空 | 不给文件或给`-`时读 stdin |
+
+- stdin 模式下再给别的文件名会报错并退出码 2。
+- 每个文件单独处理：读不到就报错并继续下一个；有词法或语法错误就打`riddle fmt: <name>:<line>:<col>: <message>`并跳过该文件。
+- `files`只写内容真的变化的文件；`check`对每个会变的文件打印`would reformat <path>`。
+- 退出码：任何文件失败，或`check`模式下有文件会变，都是 1；否则 0。stdin 加`check`且内容不一致时退出码 1。
+- 格式化只改空白、保留 token 文本，换行风格跟随原文（原文含 CRLF 就用 CRLF）。
 
 ```bash
 riddle fmt src/main.rid
@@ -35,205 +72,252 @@ riddle fmt --check src/main.rid
 cat src/main.rid | riddle fmt --emit stdout
 ```
 
-`--tab-size <n>` 设置缩进宽度，`--hard-tabs` 使用制表符。LSP 的 `textDocument/formatting` 复用同一实现。
-
-CLI 在解析失败时报告行列、返回非零状态并保持文件不变；编辑器中的 LSP 请求仍可对未完成源码提供格式化结果。
-
 ## riddle run
 
-`riddle run` 编译单个文件并交给内置的 MIR 解释器执行，不需要 C 工具链：
-
 ```bash
-riddle run src/main.rid
-riddle run src/main.rid -- arg1 arg2
-riddle run src/main.rid --seed 7
+riddle run [--seed <N>] <FILE> [-- <程序参数>...]
 ```
 
-| 参数 | 作用 |
-|------|------|
-| `<FILE>` | 要运行的单个 `.rid` 文件 |
-| `[PROGRAM_ARGS]...` | `--` 之后的参数原样传给程序的 `std::env::args` |
-| `--seed <SEED>` | `std::random` 的种子，`0` 表示按时钟播种 |
+`riddle run`编译单个文件后交给内置解释器，不调用 C 工具链。文件之后的参数原样传给程序，`--`可写可不写；`std::env::args()`的第 0 项是源文件路径，不是可执行文件名。`--seed <u64>`设置`std::random`的种子，`0`表示按时钟播种。
 
-解释器执行的是降级之后的 MIR，也就是 C 后端的同一份输入，因此两侧语义对齐：整数运算按 wrapping 回绕，除零与 `MIN / -1` 触发 trap，移位按宽度掩码，浮点转整数饱和截断，下标越界调用 `panic`，裸指针 `==` 按地址比较，`panic!` 输出与编译产物一致并把位置映射回真实文件（穿过标准宏展开、映射进随编译器附带的 std 区域）。程序退出码镜像本机可执行文件的行为。
+| 情形 | 退出码 |
+| --- | --- |
+| 源文件读不到 | 2 |
+| 编译失败（含缺少`main`，此时报`error[E0401]`） | 1 |
+| 程序正常返回 | `main`的返回值 |
+| `panic`、`abort`、`unreachable`、调用未支持的`extern` | Windows 3，其它平台 134 |
+| 栈溢出与内部错误 | 101 |
 
-标准库声明的 `extern` 由内置的原生 shim 提供（`std::fs`、时间、随机数、进程与标准 I/O，以及 `rgc_*` 分配门面）。用户代码自己声明的 `extern "C"` 函数没有实现：调用时解释器报告 `interpreter does not support extern` 并以非零状态退出，需要真实 C 符号时使用 `clue run` 或 `riddlec` 加系统 C 编译器。
+panic 的位置经过 source map 映射，指向真实源文件（穿过宏展开，也能映进随编译器附带的 std）。
 
 ## riddle repl
 
-`riddle repl` 用同一个解释器启动交互会话：
+`riddle repl`没有 flag，提示符是`>>>`，括号未闭合时用`|`续行（判定只看圆括号、方括号、花括号的净余额，不解析语法）。
 
-```bash
-riddle repl
+- 顶层定义（`fun`、`struct`、`use`等）累积进会话；`let`与表达式行写进一个自动生成的`main`。
+- 每次求值都把整个会话重新编译并重跑，所以之前的副作用会重放，只有新增的输出会上报。
+- 表达式打印自己的`{:?}`值，并绑定到`__`供后续行使用；值是`()`时不打印。
+- 命令：`:help`或`:?`、`:reset`（清空会话）、`:mir`（打印最近一次成功编译的 MIR）、`:quit`/`:exit`/`:q`。其它`:xxx`只提示未知命令，不退出。
+- `panic("...")`这种不带路径的调用在 REPL 里不可用（会报未解析的名字），用`panic!("...")`宏。
+- 只有`:quit`与 EOF 结束会话，都是退出码 0；行编辑器初始化失败是 1。
+- 历史只存在内存里，没有`:load`、`:type`等命令。
+
+## C 后端
+
+每个包只生成一个`.c`文件，没有`.h`：prelude、类型定义、GC 描述符表、函数前置声明、函数体和 C 入口都在这一个文件里。文件头两行是`// Generated by Riddle`和一条建议的编译命令。
+
+符号命名：
+
+| 对象 | 名字 |
+| --- | --- |
+| 函数 | `riddle_f_<名字每个字节的两位小写 hex>` |
+| 类型 | `riddle_t_<symbol 的 hex>`，symbol 形如`struct::<id>::<Name>` |
+| 字段 | `riddle_m_<hex>` |
+| 形参与局部值 | `riddle_v_<hex>` |
+| 元组 | `riddle_tuple_<hash16>`，字段是`f0`、`f1`… |
+| 函数指针 | `riddle_fn_<hash16>` |
+| 导出函数 | 源码原名（`extern "C"`定义或`#[c_export]`） |
+
+`main`有两种形态，取决于程序是否需要运行时（用到堆分配、调用`rgc_*`或读进程参数）：
+
+```c
+/* 不需要 runtime，例如 --no-std 下空的 fun main() {} */
+int main(void) { return 0; }
+
+/* 需要 runtime */
+int main(int argc, char **argv) {
+  riddle_args_init((int32_t)argc, argv);
+  int rgc_stack_anchor = 0;
+  rgc_init(&rgc_stack_anchor);
+  return (int)riddle_f_main();
+}
 ```
 
-- 顶层定义（`fun`、`struct`、`use` 等）累积进会话；
-- `let` 与表达式行写进一个自动生成的 `main`，每次求值都重新编译并重跑整个会话，因此副作用会重放；
-- 表达式打印自己的 `{:?}` 值并绑定到 `__`，后续行可以直接引用；
-- 命令为 `:help`、`:reset`（开始新的会话）、`:mir`（打印最近一次编译的 MIR）和 `:quit`。
+需要 runtime 时源码里的`main`改名成 mangled 名，由这层包装调用。默认加载 std 时基本都会走这一形态。返回`()`的`main`在 C 里是`int`加`return 0;`，返回`i32`的就是`int32_t main(void)`；带参数的`main`在需要 runtime 时是编译错误（`runtime-backed main cannot take parameters`）。
 
-## C backend
-
-使用 C backend：
-
-```bash
-clue new hello
-cargo run -p riddlec -- --backend c --output hello.c hello/src/main.rid
-```
-
-`riddlec` 只生成包含 `rgc` ABI 调用的 C 源码，不再内嵌具体 GC。手动构建时需要同时编译一个运行时实现；仓库中的默认实现位于 `crates/gc/src/runtime.c`，进程参数运行时位于 `crates/gc/src/args_runtime.c`（生成的 C 入口会无条件初始化进程参数）：
-
-```bash
-cc hello.c crates/gc/src/runtime.c crates/gc/src/args_runtime.c -o hello
-```
-
-`clue build` 会自动选择并编译默认运行时，也可以通过 `Clue.toml` 的 `[runtime].source` 使用自定义 GC 或分配器。
-
-当前 C backend 会把 Riddle 的结构体生成为 C `struct`，固定长度数组生成为 C 数组字段，初始化含数组字段的结构体时使用 `memcpy` 复制数组存储。枚举值会生成为带 `tag` 和 payload 字段的结构体表示。raw string 会按 C 字符串规则转义后输出。
-
-`--output` 的行为：
-
-- `--output app`：写出 `app.c`；
-- `--output app.c`：写出 `app.c`；
-- 其他输出名会追加 `.c`，例如 `--output app.h` 写出 `app.h.c`；
-- 不写 `--output`：按第一个输入文件名派生 `.c` 输出名。
-
-## C 类型映射
-
-当前后端使用以下主要表示：
+类型映射：
 
 | Riddle | C |
-|--------|---|
+| --- | --- |
 | `i8` / `i16` / `i32` / `i64` | `int8_t` / `int16_t` / `int32_t` / `int64_t` |
 | `u8` / `u16` / `u32` / `u64` | `uint8_t` / `uint16_t` / `uint32_t` / `uint64_t` |
 | `isize` / `usize` | `ptrdiff_t` / `size_t` |
 | `bool` | `bool` |
 | `char` | `uint32_t` |
-| `()` | 返回位置为 `void`；值位置（参数、字段等）使用 `riddle_unit`（`unsigned char`） |
-| `&T`（定长类型） | `T*` |
-| `*const T` / `*mut T` | 内部值为 `T*`；`extern "C"` 声明中统一映射为 `void*` |
-| `[T; N]` | C 数组；零长度数组使用严格 C11 兼容的占位存储 |
-| `enum` | 带 tag 和 payload 字段的 C `struct` |
-| callable（内部） | `{ call, env, drop }`，调用与析构接收隐藏环境参数 |
-| `&[T]`（内部） | 携带指针与长度的切片结构 |
-| `&str`（Riddle 内部） | `riddle_str { ptr, len }` |
+| `str` / `&str` / `&mut str` | `riddle_str`（`{ const char* ptr; size_t len; }`） |
+| `[T]` / `&[T]` / `&mut [T]` | `riddle_slice`（`{ void* ptr; size_t len; }`） |
+| `&T` / `&mut T` | `T*`；共享引用也不加`const`，因为`mut`字段要能通过共享引用写入 |
+| `*const T` / `*mut T` | 内部值是`T*`；`extern "C"`声明里统一成`void*` |
+| `[T; N]` | C 数组；`N == 0`写成`[1]` |
+| `struct S` | `riddle_t_<hex>` |
+| `(A, B)` | 生成的 struct，字段`f0`、`f1` |
+| `enum E` | 带`tag`和 payload 字段的 struct，变体字段名是`{Variant}_{index}`或`{Variant}_{field}` |
+| `()` | 返回位置是`void`，值位置是`riddle_unit`（`unsigned char`） |
 
-`extern "C"` 声明中的指针参数和返回值按 `void*` 映射，调用点会自动插入兼容的指针转换；内部值才保留具体的 `T*`。`&[T]`（元素必须有大小且不能是 `str`）作为 extern 参数会自动拆成指针和长度两个 C 参数：`&[i32]` 映射为 `const int32_t*` 加 `size_t`，`&mut [T]` 为 `T*` 加 `size_t`；切片返回值与无大小的切片仍被拒绝。`&str` 在导入与导出边界上的特殊规则见下一节。
+运算与陷阱的生成方式与解释器一一对应：整数加减乘先提升到无符号 carrier 再还原；除零与`MIN / -1`由内联守卫打印`riddle: division by zero`之类的消息后`abort()`；移位量按宽度取模；浮点转整数饱和（NaN 变 0）；浮点余数调用`fmod`/`fmodf`；下标越界内联检查并`abort()`；`&str`相等按内容（`memcmp`）比较，裸指针比较按地址。panic 渲染成`thread 'main' panicked at <file>:<line>:<column>:`加消息，然后`abort()`。
+
+后端会直接拒绝的形态：
+
+- 参数或返回值是裸`[T]`、`&[str]`、切片返回值；
+- 裸`str`参数或返回值（类型检查器通常更早报 E0043）；
+- 导出名或 extern 名不是合法的 C 标识符；
+- `gc = false`时出现`rgc_*`调用。
+
+## 手动编译生成的 C
+
+```bash
+riddlec --backend c -o hello.c hello.rid
+cc hello.c crates/gc/src/runtime.c crates/gc/src/args_runtime.c -o hello
+```
+
+生成的头部注释就是这条命令的形态：需要 runtime 时是`cc out.c runtime.c args_runtime.c -o out`，否则是`cc out.c -o out`。手动编译要自己保证 C11，并显式给出一个内存运行时；进程参数由`args_runtime.c`提供，和内存运行时分开，因此自定义分配器不必实现`std::env`那部分。
+
+两个容易踩的点：
+
+- 浮点余数会生成`fmod`/`fmodf`调用。在 glibc 目标上链接时要自己加`-lm`；`clue`的链接参数里没有`-lm`。
+- `clue`也不加`-pthread`：随附运行时是单线程的，不需要线程库。
 
 ## extern "C"
 
-外部 C 函数声明块必须使用 `unsafe extern`。块内函数默认不安全，只有显式标记为 `safe fun` 的声明才能在安全代码中调用；`safe` 不能在普通 `extern` 中使用：
+声明块必须是`unsafe extern "C" { ... }`，否则解析期报`extern blocks must use unsafe extern`。块里的函数默认是 unsafe 的，只有显式写成`safe fun`的声明才能在安全代码里直接调用：
 
 ```riddle
 unsafe extern "C" {
     safe fun abs(x: i32) -> i32;
     fun malloc(size: usize) -> *mut u8;
+    fun free(pointer: *mut u8);
 }
 
-fun main() {
-    let value = abs(-42);
-    let pointer = unsafe { malloc(16) };
+fun main() -> i32 {
+    let buffer = unsafe { malloc(16) };
+    unsafe { free(buffer); }
+    abs(-42)
 }
 ```
 
-`extern` 声明描述一个确定的 C ABI 符号，因此不允许泛型参数。需要泛型封装时，应在普通 Riddle 泛型函数中调用具体的非泛型 FFI 声明。
+- 没有函数体的单函数声明（`extern "C" fun name(...) -> T;`）是解析错误：`single-function extern declarations are not supported; use an unsafe extern block`。
+- 带函数体的顶层`extern "C" fun name(...) { ... }`是导出定义，不是导入。
+- 声明里不允许泛型参数，解析期就会报错。
+- 后端不按符号名内置任何 C 函数，`abs`、`malloc`、`strlen`都是普通外部符号，由系统库或你自己的 C 代码提供。
+- `safe fun`是声明者对调用契约的承诺：标错的声明会让安全代码直接踩到未定义行为。
 
-C backend 不按符号名提供内置 C 函数；每个声明都会生成普通外部符号引用，由系统库、用户 C 代码或所选运行时负责链接。
-
-`safe fun` 是声明者对整个调用契约的承诺；错误标记可能让安全代码触发未定义行为。
-
-也支持导出 C ABI 函数：
+`&str`跨导入边界时会复制成 NUL 结尾的 C 字符串：
 
 ```riddle
-extern "C" fun add(x: i32, y: i32) -> i32 {
+unsafe extern "C" {
+    safe fun puts(text: &str) -> i32;
+}
+
+fun main() -> i32 {
+    puts("hello from riddle")
+}
+```
+
+调用点把参数字节复制到临时缓冲区并补一个 NUL，以`const char*`传入，调用结束即释放，所以 C 侧不能保存这个指针；参数里含嵌入的 NUL 会在运行时`abort()`（`riddle: C string contains an embedded NUL`）。导入返回`&str`时，C 侧必须返回 NUL 结尾的字符串，长度由`strlen`恢复后拷进托管内存。
+
+切片只支持`&[T]`（`T`有大小且不是`str`），并且会拆成两个 C 参数：`&[i32]`变成`const int32_t*`加`size_t`，`&mut [T]`用`T*`加`size_t`。结构体可以按值传递，生成的是`extern int32_t takes_pair(riddle_t_<hex>);`这样的声明。
+
+`unsafe`、原始指针与`as`转换：
+
+```riddle
+unsafe fun dereference(pointer: *const i32) -> i32 {
+    unsafe { *pointer }
+}
+
+fun main() -> i32 {
+    let pointer = 0usize as *const i32;
+    unsafe { dereference(pointer) }
+}
+```
+
+解引用原始指针、索引原始指针、调用 unsafe 函数都必须写在`unsafe { }`里（否则报 E0046）。`unsafe fun`的函数体仍从安全上下文开始，内部的不安全操作要自己再包一层块。`unsafe`不关闭类型、可变性、移动和借用检查；不安全函数项也不会满足安全的`Fn`、`FnMut`、`FnOnce`约束，不能借安全 callable 参数绕开检查。
+
+## 导出给 C
+
+两种写法都导出源码原名：
+
+```riddle
+#[c_export]
+pub fun add(x: i32, y: i32) -> i32 {
     x + y
 }
-```
 
-字符串 FFI 不接受裸 `str` 参数或返回值。`&str` 在 Riddle 内部是胖指针；调用只有声明、没有函数体的 C 导入时，C backend 会复制参数的字节到临时缓冲区并补一个尾部 NUL，再以 `const char*` 传出；临时指针只在本次调用期间有效，参数中不能含嵌入的 NUL。若导入返回 `&str`，返回指针必须以 NUL 结尾，长度由 `strlen` 恢复。
-
-```riddle
-unsafe extern "C" {
-    fun puts(s: &str) -> i32;
-}
-
-fun main() {
-    unsafe { puts("hello from riddle"); }
+extern "C" fun multiply(x: i32, y: i32) -> i32 {
+    x * y
 }
 ```
 
-带函数体的 `extern "C"` 是导出定义，不会再作为导入重复声明。它的 `&str` 参数和返回值保留 `riddle_str { ptr, len }` C 结构体 ABI，以免丢失长度：
+两者的`&str` ABI 不同：
 
-```c
-struct riddle_str {
-    const char *ptr;
-    size_t len;
-};
-```
+- 带函数体的`extern "C" fun`保持`riddle_str { const char* ptr; size_t len; }`，长度不丢；
+- `#[c_export]`把`&str`参数写成`const char*`，函数体入口用`strlen`还原长度，所以 C 侧必须传 NUL 结尾的字符串。
 
-在 64 位目标上该结构体占 16 字节，在 32 位目标上占 8 字节。裸 `str` 没有独立的运行时值或布局。
+导出名直接占用 C 的全局命名空间，只有“是不是合法 C 标识符”这一层检查（含关键字黑名单），没有前缀和命名空间。普通 Riddle 函数（包括库包的`pub`函数）名字一律被 mangle，C 侧不能按名字调用。
 
-## unsafe、原始指针和 as
+C 侧看到的 ABI 仍在预览阶段，会不兼容地变化：例如`rgc_alloc`已经从`rgc_alloc(size_t)`变成`rgc_alloc(size_t, const uint32_t*)`。跨语言边界建议显式传指针和长度，而不是依赖内部结构体布局。
 
-低层代码可以使用 `unsafe fun`、`unsafe` 块、原始指针类型和 `as` 转换：
+## GC 运行时
 
-```riddle
-unsafe extern "C" {
-    fun my_alloc(size: usize) -> *const i32;
-}
+默认运行时是`crates/gc/src/runtime.c`（mark-sweep），`crates/gc/src/args_runtime.c`提供进程参数，两者分开链接；`gc = false`时改用`crates/gc/src/no_gc_runtime.c`。
 
-unsafe fun read(ptr: *const i32) -> i32 {
-    unsafe { *ptr }
-}
+| 符号 | 签名 | 语义 |
+| --- | --- | --- |
+| `rgc_init` | `void rgc_init(void *stack_bottom)` | 记录栈底；没初始化时回收直接返回 |
+| `rgc_alloc` | `void *rgc_alloc(size_t size, const uint32_t *descriptor)` | `size == 0`提升为 1；按阈值决定是否先回收；校验描述符；≤1 KiB 走 size class，否则`malloc`；清零描述符列出的指针槽后登记；存活期间地址不移动 |
+| `rgc_realloc` | `void *rgc_realloc(void *ptr, size_t size)` | 保留原前缀，可能换地址，继承原描述符 |
+| `rgc_free` | `void rgc_free(void *ptr)` | 接受`NULL`；只释放精确命中的基址，内部指针与外来指针静默忽略 |
+| `rgc_collect` | `void rgc_collect(void)` | 一轮完整标记清扫 |
+| `rgc_is_allocated` | `int rgc_is_allocated(const void *ptr)` | 精确基址当前是否已登记 |
+| `riddle_alloc_bytes` | `void *riddle_alloc_bytes(size_t size)` | 无类型字节存储，默认运行时等于`rgc_alloc(size, NULL)` |
+| `rgc_stat_*` | 见下 | 统计读数 |
 
-fun main() {
-    unsafe {
-        let p: *const i32 = my_alloc(16);
-        let value = read(p);
-        let n = 42 as f64;
-    }
-}
-```
+统计访问器：`rgc_stat_live_bytes`、`rgc_stat_live_objects`、`rgc_stat_total_objects`、`rgc_stat_collections`、`rgc_stat_typed_objects`、`rgc_stat_conservative_objects`、`rgc_stat_marked_objects`、`rgc_stat_typed_payload_scans`、`rgc_stat_conservative_payload_scans`、`rgc_stat_last_mark_ns`、`rgc_stat_last_sweep_ns`、`rgc_stat_heap_bytes`、`rgc_stat_chunks`。都返回`size_t`。
 
-原始指针解引用、原始指针索引以及调用 `unsafe fun` 都必须位于 `unsafe {}` 中。`unsafe fun` 的函数体本身仍从安全上下文开始，内部不安全操作需要显式块。`unsafe` 不会关闭类型、可变性、move 或借用检查；原始指针不参与普通引用的借用跟踪。
+描述符：
 
-不安全函数项只能在 `unsafe {}` 中直接调用，也不会满足安全的 `Fn`、`FnMut` 或 `FnOnce` bound，因此不能借助安全 callable 参数绕过调用检查。
+- `descriptor[0]`是指针槽数量，`descriptor[1 + i]`是第 i 个槽在载荷内的字节偏移。
+- `NULL`表示布局未知，退回逐字保守扫描；`{ 0u }`表示精确的“没有指针”，最省。
+- 登记时校验：槽数超过`size / sizeof(uintptr_t)`，或某个偏移加一个机器字超出对象，都会静默退化为`NULL`。
+- 编译器侧一张描述符最多列 512 个槽（`RGC_MAX_DESCRIPTOR_SLOTS`）：恰好 512 个槽仍然会生成描述符，第 513 个槽才退化为`NULL`。
+- 只是“无法忠实描述”的情况也会退化：还没降级成 tagged struct 的`enum`、查表失败的类型。
+- typed 分配只清零描述符列出的槽，其余字节不清零；传`NULL`的分配完全不清零。堆分配不保证返回零初始化内存。
 
-## riddle-lsp
+分配形状与扫描：
 
-`riddle-lsp` 是 Riddle 的 Language Server Protocol 实现，基于 `tower-lsp`。它为编辑器提供实时诊断、补全、语义高亮、悬停、签名帮助、代码跳转、引用与重命名、符号搜索、Inlay Hint、格式化和代码折叠：
+- ≤1 KiB 的分配从 64 KiB 的 chunk 里按 16 字节 size class 切块（共 64 类），更大的直接`malloc`；清扫只把块还给对应的空闲链或`malloc`，chunk 本身一直留着。
+- 根集是捕获的寄存器加`[当前帧, stack_bottom)`之间的机器字；保守扫描按机器字对齐，内部指针解析到所属对象。
+- 对象头存在带外登记表里，交给用户的地址就是载荷起始地址；精确查找走地址哈希表。
+- 每轮回收后阈值变为`max(RGC_MIN_HEAP, live * 2)`，`RGC_MIN_HEAP`默认 1 MiB，可以用`-D`覆盖（编译期宏）。
+- 设置了`RGC_DEBUG_STATS`（值任意，存在即开）时，每轮回收往 stderr 打一行，含存活字节与对象数、typed/conservative 计数、本轮回收量、mark/sweep 微秒、下次阈值与两类扫描次数。
 
-```bash
-cargo run -p riddle-lsp
-```
+这块 ABI 是技术预览：不支持移动式回收、finalizer 和多线程栈注册，实现按单线程写。
 
-它通过 stdin/stdout 与编辑器通信。文档变化会经过短暂防抖，后台分析复用项目级增量语法树、函数体和类型检查缓存，只发布发生变化的诊断；语义请求只分析所属的 Clue 项目，并协作式取消过期分析。
+`gc = false`时：
 
-- **解析错误**：来自词法/语法分析阶段；
-- **HIR 诊断**：包括 E0040（降级错误）、E0050/E0051/E0052（名字解析错误）；
-- **类型检查诊断**：E0001–E0034、E0072 等类型和 trait 检查错误；
-- **分析诊断**：E0100 移动语义、E0300–E0308 与 E0310 引用、借用与逃逸约束。
+- 只提供分配器：`riddle_alloc`（`malloc`，失败`abort()`）、`riddle_alloc_bytes`（等于`riddle_alloc`，永不扫描）、`riddle_realloc`、`riddle_free`，产物里没有任何`rgc_*`符号。
+- 编译器把堆分配降成`riddle_alloc(sizeof(T))`（不带描述符）、释放降成`riddle_free`，不生成描述符表，也不发`rgc_init`。
+- 引用逃逸不再是可接受的提升，而是编译期错误 E0310：需要自己保证不返回、也不保存指向栈值的引用。
 
-诊断附带：
-- 次要标签（related information）指向关联位置；
-- 注释（notes）提供上下文和修复建议；
-- 严重性分层：Error、Warning、Information、Hint。
+自定义 runtime 写在`Clue.toml`的`[runtime] source`里（相对包根的 C 文件路径，必须存在），并且只对二进制包有效；`gc = false`不能与`source`同时给。provider 至少要实现`rgc_init`、`rgc_alloc`、`rgc_realloc`、`rgc_free`、`rgc_collect`；描述符参数可以忽略（一直保守扫描也是安全的），进程参数那部分不用管。自定义源码原样参与构建指纹，改一个字节就会重新构建。
 
-仓库中的 `editors` 目录提供 Helix、VS Code、Zed 和 IntelliJ IDEA 2026.1+ 客户端。完整的安装、路径配置、验证步骤和故障排查见[编辑器与 LSP](./editor-support.md)。
+## 解释器
 
-## MIR 后端架构
+`riddle run`和`riddle repl`用的是树遍历解释器，输入是完全 lowering 之后的 MIR——与 C 后端同一份，所以两侧语义按同一套规则实现：整数环绕、除零与`MIN / -1`的 trap、移位按宽度取模、浮点转整数饱和、下标越界`abort`、`&str`按内容比较、`panic`消息与位置映射、`riddle: <message>`形式的 abort 文本都一致。
 
-MIR 后端通过统一的 `Backend` trait 实现：
+标准库声明的`extern`由内置 shim 提供，覆盖：
 
-```rust
-trait Backend {
-    fn compile(&mut self, module: &Module) -> Result<String, Self::Error>;
-    fn name(&self) -> &'static str;
-}
-```
+- 字符与格式化输出：`putchar`、`riddle_fmt_fputc_stderr`、`riddle_io_stdin`；
+- 文件系统：`riddle_fs_fopen`、`riddle_fs_fclose`、`riddle_fs_fread`、`riddle_fs_fwrite`、`riddle_fs_fflush`、`riddle_fs_fgetc`、`riddle_fs_ferror`、`riddle_fs_exists`、`riddle_fs_size`、`riddle_fs_is_file`、`riddle_fs_is_dir`、`riddle_fs_read_dir`、`riddle_fs_remove`、`riddle_fs_rename`；
+- 进程与参数：`abort`、`riddle_process_exit`、`riddle_argc`、`riddle_argv_at`、`riddle_argv_len`；
+- 时间与随机：`riddle_time`、`riddle_sleep_ms`、`riddle_random_u32`、`riddle_random_u64`；
+- 内存门面：`rgc_realloc`、`rgc_free`、`riddle_str_slice_ptr`、`riddle_mem_swap`。
 
-目前实现并维护的后端：
+把随附 std 的 extern 声明与这张 shim 表对差，有五条没有实现：`riddle_alloc_bytes`、`riddle_proc_call_site_start`、`riddle_proc_call_site_end`、`riddle_proc_emit_diagnostic`、`riddle_proc_set_output`。它们都来自`std::proc_macro`，所以过程宏相关的那条路径在解释器下不可用。其余`extern`（包括用户自己声明、期望链接到真实 C 符号的那些）会报`riddle: interpreter does not support extern`加符号名，并以退出码 3（Windows）或 134 结束。
 
-| 后端 | 文件 | 状态 |
-|------|------|------|
-| C | `crates/mir/src/backend/c.rs` | CLI 可用（`--backend c`） |
+内存行为与 C 侧不同：
+
+- 指针是“分配 id 加偏移”，id 0 是空指针；字符串与函数指针靠 interning 保持身份。
+- 每次分配都零初始化，`rgc_realloc`的 shim 分配新块并拷贝`min(旧长, 新长)`。
+- 内存会回收：栈帧返回时释放它的`alloca`块，`HeapFree`与`rgc_free`释放程序持有的堆块，`rgc_realloc`释放旧块，空出来的 id 由后续分配复用，所以分配表不随运行时长单调增长。字符串字面量和提升后的存储不属于栈帧槽位，一直有效。
+- 读到已释放的指针报`dangling pointer to released allocation N`，读到越界偏移报`memory access of N bytes at offset M escapes allocation K`，不会把过期数据当正常结果返回。
+- 运行配置是 256 MiB 栈与`max_depth = 200_000`，超过报`stack overflow`。

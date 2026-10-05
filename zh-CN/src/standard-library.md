@@ -1,119 +1,212 @@
 # 常用标准库
 
-Riddle 会自动加载随编译器附带的标准库。prelude 提供日常使用频率最高的类型、变体和 trait；集合、解析、时间、格式化器与底层输出函数需要从对应模块显式导入。
+标准库随 `riddlec` 一起编译，不需要在 `Clue.toml` 里声明依赖，名字都以 `std::` 开头。一部分通过 prelude 直接可用，其余要显式 `use`。
 
-集合（`String`、`Vector`、`HashMap` 等）的用法在[集合](./collections.md)一章；迭代协议在[闭包与迭代器](./functional.md)。本页是 API 与行为的速查。
+## prelude 里有什么
 
-## Prelude 中有什么
+prelude 精确包含这些名字：`Option`、`Some`、`None`、`Result`、`Ok`、`Err`、`String`、`Vector`、`Clone`、`Copy`、`Default`、`Into`、`Drop`、`drop`、`Eq`、`Ord`、`PartialEq`、`PartialOrd`、`Iterator`、`IntoIterator`。
 
-普通程序可以直接使用：
-
-- `Option`、`Result`、`Some`、`None`、`Ok`、`Err`；
-- `String`、`Vector`；
-- `Copy`、`Clone`、`Drop`、`Default`、`Into`、`drop` 和比较 trait；
-- 标准 `Debug`、`Clone`、`Copy`、`Default`、`Hash`、`PartialEq`、`Eq`、`PartialOrd`、`Ord` 派生；
-- `Iterator` 与 `IntoIterator` 协议。
-
-函数式标准宏不属于 prelude，也不需要导入。当前包括 `format!`、`panic!`、`print!`、`println!`，断言宏 `assert!`、`assert_eq!`、`assert_ne!`、`debug_assert!`、`debug_assert_eq!`、`debug_assert_ne!`，以及 `todo!`、`unimplemented!`、`unreachable!` 和向量字面量 `vec!`。
-
-同名并不表示与 Rust 标准库具有完整相同的 API。应以本页和[当前工具链状态](./compiler-status.md)列出的实现为准。
-
-## 格式化输出
-
-`{}` 要求参数实现 `Display`，`{:?}` 要求实现 `Debug`：
+不在 prelude：`From`、`Hash`、`Display`、`Debug`、`Formatter`、`Ordering`、`Range` 与 `range`，四个集合类型，以及 `std::parse`、`std::fs`、`std::io`、`std::env`、`std::time`、`std::random` 里的全部内容。派生宏也不经过 prelude，`#[derive(Debug)]` 展开成 `crate::std::fmt::Debug` 全路径。
 
 ```riddle
-#[derive(Debug)]
-struct Point {
-    x: i32,
-    y: i32,
-}
+use std::collections::HashMap;
+use std::parse::parse_i32;
 
 fun main() {
-    let point = Point { x: 3, y: 4 };
-    println!("point={:?}", point);
-    println!("x={} y={}", point.x, point.y);
+    let mut counts: HashMap<i32, i32> = HashMap::new();
+    counts.insert(1, parse_i32("2").unwrap_or(0));
+    println!("{:?}", counts.get(&1).is_some());
+    println!("{}", counts.len());
 }
 ```
 
-格式宏当前支持多个 `{}` / `{:?}`、`{0}` 位置参数（可重复引用任意参数）、`{name}` 命名捕获（隐式读取调用处的同名局部变量）、尾随逗号以及 `{{` / `}}`；说明符只支持空说明符和 `:?`。格式串的语法、说明符合法性、命名捕获的存在性、位置索引越界与实参数量不足都会在编译期拒绝——例如 `{:>5}`、越界的 `{1}` 或缺少实参都会直接产生编译错误，不会静默通过或延迟到运行时。
+## 格式宏与说明符
 
-`print!` / `println!` 通过隐藏的标准库输出入口和 `std::fmt::{Debug, Display, Formatter, Result}` 支持字符串、布尔、字符、整数和浮点标量；`Display` 输出 UTF-8 字符，浮点数固定输出 6 位小数，其中 `NaN` 输出 `NaN`、正负无穷输出 `inf` / `-inf`、负零保留符号，整数部分超出 `u64` 的浮点数按精确十进制展开（该范围内的浮点数都是整数，小数部分恒为 `.000000`）。字符串和字符的 `Debug` 输出会添加引号并转义 `\\`、`\n`、`\r`、`\t`、`\0`；字符串转义双引号 `\"`，字符转义单引号 `\'`。格式化 trait 不在 prelude 中，底层输出入口不属于用户 API。
+函数宏在编译期展开，不需要导入：`assert`、`assert_eq`、`assert_ne`、`debug_assert`、`debug_assert_eq`、`debug_assert_ne`、`format`、`panic`、`print`、`println`、`todo`、`unimplemented`、`unreachable`、`vec`，以及过程宏用的 `quote`。没有 `write!`、`writeln!`、`stringify!`、`concat!`、`matches!`。
 
-`panic!()` 使用消息 `explicit panic`；`panic!("value={}", value)` 与其他格式宏共享编译期格式串检查，并保留宏调用位置用于 panic 诊断。底层 `std::panic` 模块及其 `panic(message)` 入口仅供标准库和编译器使用，不会进入普通补全。
+占位符只有四种形态，格式串必须是字符串字面量：
 
-`assert_eq!` / `assert_ne!` 只求值左右表达式一次，失败时显示两侧的 `Debug` 值；所有断言宏都支持自定义格式化消息。`todo!`、`unimplemented!` 和 `unreachable!` 返回 `!` 并产生对应的 panic 消息。Riddle 当前没有按构建配置关闭 debug assertion 的能力，因此 `debug_assert!`、`debug_assert_eq!` 和 `debug_assert_ne!` 始终执行。
+| 占位符 | 要求 |
+| --- | --- |
+| `{}`、`{:?}` | 对应实参实现 `Display` / `Debug` |
+| `{0}`、`{0:?}` | 按位置引用实参，可以重复引用同一个实参 |
+| `{name}`、`{name:?}` | 读取调用处同名局部变量，不是命名实参 |
+
+宽度、精度、进制和对齐都不支持，`{:>5}` 报 `E0400`；实参比占位符少也报 `E0400`。`println!("{a}", a = 1)` 这种命名实参写法不可用，报 `E0050`：
+
+```riddle
+fun main() {
+    println!("[{:>5}]", 1i32);      // E0400
+}
+```
+
+```riddle
+fun main() {
+    println!("{} {}", 1i32);        // E0400
+}
+```
+
+`Display` 为 `&str`、`String`、`bool`、`char`、全部整数、`f32`/`f64` 和 2 到 6 元组实现。`Vector`、`HashMap`、`Option`、`Result` 只有 `Debug`，`println!("{}", values)` 报 `E0035`；引用同样不参与自动解引用，`key: &i32` 用 `{}` 或 `{:?}` 都报 `E0035`，要先写 `*key`：
+
+```riddle
+fun main() {
+    let values = vec![1, 2, 3];
+    println!("{:?}", values);
+    println!("{}", values);      // E0035
+}
+```
+
+浮点的 `{}` 和 `{:?}` 输出相同：固定 6 位小数、直接截断，特殊值输出 `NaN`、`inf`、`-inf`、`-0.000000`。字符串和字符的 `Debug` 加引号并转义 `\n`、`\r`、`\t`、`\0`、反斜杠和引号本身。
+
+```riddle
+fun main() {
+    println!("{} {:?}", 1.5f64, 1.5f64);       // 1.500000 1.500000
+    println!("{}", 0.9999999f64);               // 0.999999
+    println!("{:?}", "a\nb");                   // "a\nb"
+    println!("{:?}", 'x');                      // 'x'
+    println!("{}", (1i32, 2i32));               // (1, 2)
+}
+```
+
+`assert_eq!` 和 `assert_ne!` 只求值两侧一次，失败时打印两侧的 `Debug` 值，所有断言宏都接受自定义消息。`todo!`、`unimplemented!`、`unreachable!` 以固定消息 panic。`debug_assert` 系列与对应的 `assert` 系列行为相同，当前没有按构建配置关闭它们的开关。`println!()` 只输出换行，`print!()` 什么都不输出；写 stderr 用 `std::io` 的 `eprint`、`eprintln`。
 
 ## 标准派生
 
-编译器内置 `Debug`、`Clone`、`Copy`、`Default`、`Hash`、`PartialEq`、`Eq`、`PartialOrd` 和 `Ord` 派生，可用于结构体和 unit、tuple、named 三类枚举变体。`Clone`、`Default`、`Hash` 和比较派生按字段声明顺序工作；`PartialEq` 在枚举变体不同时返回 `false`；`PartialOrd` / `Ord` 先比较枚举变体声明顺序，再按 payload 做字典序比较，`PartialOrd` 会原样传播字段返回的 `None`；`Copy` 和 `Eq` 生成标记 impl。泛型类型参数会自动获得相应 trait bound，例如 `Wrapper<T>` 的 `Clone` impl 要求 `T: Clone`。
+编译器内置 9 个派生宏：`Debug`、`Clone`、`Copy`、`Default`、`Hash`、`PartialEq`、`Eq`、`PartialOrd`、`Ord`，可用于结构体和 unit、tuple、named 三类枚举变体。
 
-结构体的 `Default` 会逐字段调用 `Default::default()`。枚举必须用 `#[default]` 标记恰好一个 unit 变体：
+- `Clone`、`Default`、`Hash` 与比较按字段声明顺序工作；
+- `PartialEq` 在变体不同时返回 `false`；
+- `PartialOrd` 和 `Ord` 先按变体声明顺序、再按 payload 字典序比较，`PartialOrd` 原样传播字段返回的 `None`；
+- `Copy` 和 `Eq` 生成标记 impl，但仍然校验字段：`#[derive(Copy)]` 遇到 `String` 字段报 `E0041`，只派生 `Eq` 而没有 `PartialEq` 报 `E0036`；
+- 泛型参数自动获得相应 bound，`Wrapper<T>` 的 `Clone` impl 要求 `T: Clone`。
 
 ```riddle
-#[derive(Default, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Config { retries: i32, label: String }
+
+#[derive(Default, Debug)]
+struct Settings { retries: i32 }
+
+#[derive(Default, PartialEq, Eq, PartialOrd, Ord, Debug)]
 enum State {
     #[default]
     Idle,
     Running(i32),
 }
-```
-
-`Copy` 派生仍会经过字段和枚举 payload 校验。比较 trait 保持标准库的父 trait 关系，因此通常按 `PartialEq, Eq, PartialOrd, Ord` 一起派生；只派生 `Eq`、`PartialOrd` 或 `Ord` 而没有所需的父 trait impl 会产生类型错误。
-
-## 解析与时间
-
-`std::parse` 提供一组溢出安全的解析入口，`std::time` 提供时间戳与休眠：
-
-```riddle
-use std::parse::parse_i32;
-use std::time::{sleep, Duration, time_now};
 
 fun main() {
-    let value = parse_i32("42").unwrap_or(0);
-    println!("value={} now={}", value, time_now());
-    sleep(Duration::from_millis(50));
+    let a = Config { retries: 3, label: String::from_str("x") };
+    let b = a.clone();
+    println!("{:?} {}", b, a == b);
+
+    let settings: Settings = Default::default();
+    println!("{}", settings.retries);
+
+    let state: State = Default::default();
+    println!("{}", state == State::Idle);
 }
 ```
 
-`parse_i32` / `parse_i64` / `parse_u64` / `parse_usize` 返回 `Result<T, ParseIntError>`；错误包含 `Empty`、`InvalidDigit`、`PosOverflow` 和 `NegOverflow`，`parse_with_radix` 支持 2–36 进制。`time_now` 转发到 C `time` 并返回 `i64`；`Duration` 提供 `from_secs` / `from_millis` / `as_secs` / `as_millis`，`sleep` 转发到运行时垫片。
+结构体的 `Default` 逐字段调用 `Default::default()`；枚举必须用 `#[default]` 标记恰好一个 unit 变体，否则展开阶段报 `E0400`。调用时写 `Default::default()` 并靠绑定的类型标注选择实现，`Settings::default()` 这种关联函数写法不可用。
+
+```riddle
+#[derive(Default)]
+enum State {
+    Idle,
+    Running(i32),
+}
+
+fun main() {
+    let state: State = Default::default();      // E0400
+    println!("{}", state == State::Idle);
+}
+```
+
+## 解析
+
+`std::parse` 只解析整数，不解析浮点：
+
+| 函数 | 返回 |
+| --- | --- |
+| `parse_i32(&str)`、`parse_i64(&str)`、`parse_u64(&str)`、`parse_usize(&str)` | `Result<T, ParseIntError>` |
+| `parse_with_radix(&str, radix: u32)` | `Result<i64, ParseIntError>`，`radix` 取 2 到 36 |
+
+`ParseIntError::kind(&self) -> &ParseIntErrorKind` 给出四种原因：`Empty`、`InvalidDigit`、`PosOverflow`、`NegOverflow`。没有 `FromStr` trait，也没有 `"12".parse::<i32>()` 这种写法。
+
+```riddle
+use std::parse::{parse_i32, parse_with_radix, ParseIntErrorKind};
+
+fun main() {
+    let decimal = parse_i32("42").unwrap_or(0);
+    let hex = parse_with_radix("ff", 16u32).unwrap_or(0);
+    match parse_i32("12x") {
+        Ok(number) => println!("{}", number),
+        Err(reason) => match reason.kind() {
+            ParseIntErrorKind::Empty => println!("empty"),
+            ParseIntErrorKind::InvalidDigit => println!("invalid digit"),
+            ParseIntErrorKind::PosOverflow => println!("overflow"),
+            ParseIntErrorKind::NegOverflow => println!("underflow"),
+        },
+    }
+    println!("{} {}", decimal, hex);
+}
+```
+
+## 时间与随机
+
+`std::time` 里 `time_now() -> i64` 返回秒级时间戳，`Duration` 由 `from_secs(u64)`、`from_millis(u64)` 构造，`as_secs`、`as_millis` 取回数值，`sleep(Duration)` 阻塞当前线程。`Duration` 没有 `Debug`、`Clone`、`PartialEq`，也没有算术运算符；没有 `Instant` 和 `SystemTime`。
+
+`std::random` 提供 `random_u32()`、`random_u64()`、`random_bool()` 和 `random_below(bound: u32)`；`bound` 为 0 时返回 0，否则取模，不保证无偏。
+
+```riddle
+use std::time::{sleep, time_now, Duration};
+
+fun main() {
+    let start = time_now();
+    sleep(Duration::from_millis(20));
+    println!("{} {}", start <= time_now(), Duration::from_secs(2).as_millis());
+}
+```
 
 ## 进程参数
 
-`std::env::args_os()` 返回 `Vector<std::ffi::OsString>`，无损保留宿主参数。Unix 保存原始字节；Windows 直接解析 `GetCommandLineW`，使用 WTF-8 保存 UTF-16，因此孤立代理项也不会丢失。`OsString::as_encoded_bytes()` 只适合在同一平台和版本内传递，`into_string()` 在参数不是有效 Unicode 时返回原值。
+`std::env::args_os() -> Vector<OsString>` 无损保留宿主传入的参数，`std::env::args() -> Vector<String>` 是它的 Unicode 版本，任一参数不是有效 Unicode 时 panic（消息 `process argument is not valid Unicode`）。第一个参数是程序自身，用 `riddle run` 跑脚本时是脚本路径。
 
-`std::env::args()` 返回 `Vector<String>`；只要任一参数不能转换为 Unicode，该函数就会 panic。需要处理任意系统参数时应使用 `args_os()`。
+参数是 `OsString`，方法有 `new()`、`from_str(&str)`、`as_encoded_bytes(&self) -> &[u8]`、`unsafe from_encoded_bytes_unchecked(&[u8])`、`len`、`is_empty` 和 `into_string(self) -> Result<String, OsString>`。没有 `OsStr`、`CString`，也没有 `Hash`、`Ord`。
 
-## 完整 API 清单
+```riddle
+use std::env::args_os;
+
+fun main() {
+    let args = args_os();
+    for arg in &args {
+        println!("{}", arg.len());
+    }
+}
+```
+
+遍历要写 `for arg in &args`：`args_os().iter()` 返回 `SliceIter`，它没有 `IntoIterator`，放进 `for` 报 `E0035`。
+
+## 模块地图
 
 | 模块 | 内容 |
-|------|------|
-| `std::option::Option<T>` | `is_some`、`is_none`、`unwrap`、`expect`、`unwrap_or`、`unwrap_or_else`、`map`、`map_or`、`and_then`、`and`、`or`、`or_else` |
-| `std::result::Result<T, E>` | `is_ok`、`is_err`、`unwrap`、`expect`、`unwrap_or`、`unwrap_or_else`、`map`、`map_or`、`map_err`、`and_then`、`and`、`ok`、`err` |
-| `std::ffi::OsString` | `new`、`from_str`、`as_encoded_bytes`、`from_encoded_bytes_unchecked`（unsafe）、`into_string`、`len`、`is_empty` |
-| `std::env` | `args_os`、`args` |
-| `std::string::String` | `new`、`from_str`、`from_utf8`、`as_str`、`as_bytes`、`len`、`capacity`、`is_empty`、`push_str`、`push_char`、`clear`、`slice`、`trim`、`contains`、`find`、`starts_with`、`ends_with`、`split`、`replace`、`to_ascii_uppercase`、`to_ascii_lowercase` |
-| `std::str`（impl） | `len`、`is_empty`、`as_bytes`、`contains`、`find`、`starts_with`、`ends_with`、`slice`、`trim`、`split`、`replace`、`to_ascii_uppercase`、`to_ascii_lowercase`，以及按 Unicode `char` 遍历的 `StrIter` |
-| `std::vector::Vector<T>` | `new`、`len`、`capacity`、`is_empty`、`push`、`pop`、`insert`、`remove`、`get`、`get_mut`、`swap`、`sort`、`contains`、`retain`、`clear`、`as_slice`、`as_ptr`、`iter`、`iter_mut`、`from_iterator`、`from_elem`、读写下标和按值迭代 |
-| `std::collections` | `HashMap`、`HashSet`（键需 `Hash + Eq`）、`TreeMap`、`TreeSet`（键需 `Ord`），四类集合均提供 `remove`；`HashMap` 另有 `get_or_insert` 与 Rust 风格的 `entry(key)`（返回 `Entry` 枚举：`Occupied`/`Vacant`），配合 `or_insert` / `or_insert_with` / `or_default` 实现"不存在则插入"惯用法 |
-| `std::iter` | `Iterator`、`IntoIterator` 协议；`Iterator` 的默认方法含 `map`、`filter`、`chain`、`inspect`、`count`、`nth`、`fold`、`for_each`、`all`、`any`、`find`、`position` 和 `collect`；`std::iter` 另提供急切的 `map_into` / `filter_into`，适配器 `enumerate` / `take` / `skip` / `take_while` / `skip_while` / `zip`，`min` / `max`，以及 `DoubleEndedIterator` |
-| `std::slice` | `SliceIter`（实现 `DoubleEndedIterator`，`next_back` 支持从尾部遍历）、`SliceIterMut`，以及 `[T]` 的长度、边界检查访问、原始指针访问和借用迭代 |
-| `std::array` | 按值、共享借用和可变借用数组迭代器 |
-| `std::fs` | `FsFile`（`open`、`create`、`append`、`read`、`write`、`flush`、`read_to_string`）、`exists`、`metadata`、`read_dir`、`remove`、`rename`、`copy`，以及整文件 `read_to_string` / `write` |
-| `std::io` | `eprint`、`eprintln`、`read_line`（标准输入按行读取并校验 UTF-8）、`BufReader`（文件缓冲行读取，同样校验 UTF-8）；非法 UTF-8 字节序列返回 `ReadError::InvalidUtf8` 并保持缓冲区为空 |
-| `std::char` | ASCII 判断与大小写转换、`to_digit`、`from_digit`、空白判断 |
-| `std::process` | `exit(code)` |
-| `std::mem` | `swap`、`take` |
-| `std::random` | `random_u32`、`random_u64`、`random_bool`、`random_below` |
-| `std::ops` | `Range`、`RangeInclusive`、`range(start, end)`、`range_inclusive(start, end)`、`Drop`，以及算术、位运算、移位、复合赋值和 `Index` / `IndexMut` trait |
-| `std::marker` | `Copy` |
-| `std::clone` | `Clone` |
-| `std::cmp` | `Ordering`、`PartialEq`、`Eq`、`PartialOrd`、`Ord` |
-| `std::default` | `Default`，为标量、`Option<T>`、`String` 和 `Vector<T>` 提供默认值 |
-| `std::convert` | `Into<T>` 与 `From<T>`，`?` 错误传播使用的错误转换协议 |
-| `std::hash` | `Hash`，通过共享借用为标量提供确定性的 `usize` 哈希值 |
-| `std::fmt` / `std::io` | `Debug`、`Display`、`Formatter` 和底层输出函数 |
-| `std::parse` | `parse_i32`、`parse_i64`、`parse_u64`、`parse_usize`、`parse_with_radix` |
-| `std::time` | `time_now`、`Duration`（`from_secs`、`from_millis`、`as_secs`、`as_millis`）和 `sleep` |
+| --- | --- |
+| `std::option` / `std::result` | `Option`、`Result` 及其方法 |
+| `std::vector` / `std::string` | `Vector`、`String`，见[集合](./collections.md) |
+| `std::collections` | `HashMap`、`HashSet`、`TreeMap`、`TreeSet`、`Entry`，见[集合](./collections.md) |
+| `std::iter` | `Iterator`、`IntoIterator`、适配器与自由函数，见[匿名函数与迭代器](./functional.md) |
+| `std::ops` | 运算符 trait、`Drop`、`Range`、`range`、`range_inclusive` |
+| `std::cmp` / `std::hash` / `std::clone` / `std::default` / `std::convert` / `std::marker` | 比较、哈希、克隆、默认值、`Into`/`From`、`Copy` |
+| `std::fmt` | `Display`、`Debug`、`Formatter`、`Error` |
+| `std::io` | `eprint`、`eprintln`、`read_line`、`BufReader`、`ReadError` |
+| `std::fs` | `FsFile`、`read_to_string`、`write`、`exists`、`remove`、`rename`、`copy`、`metadata`、`read_dir`、`FsError` |
+| `std::env` / `std::ffi` | `args`、`args_os`、`OsString` |
+| `std::parse` / `std::time` / `std::random` / `std::process` | 整数解析、时间与休眠、随机数、`exit` |
+| `std::mem` | `drop`、`replace`、`size_of`、`swap`、`take` |
+| `std::char` / `std::slice` / `std::array` | ASCII 判断与大小写转换、切片与数组方法 |
 
-`Vector<T>` 对零大小元素也分配至少一个槽位，并检查容量乘法溢出；下标越界调用 `panic`。错误传播的完整规则见[错误处理](./error-handling.md)。
+没有 `std::vec`（模块名是 `std::vector`）、`std::num`、`std::debug`、`std::thread`、`std::sync`、`std::path`、`std::error`。
+
+## 完整 API 文档
+
+`clue doc` 生成当前包的 HTML 参考：先跑一次完整检查，通过后写到 `<PATH>/.clue/doc/index.html`，每个模块一页，页名把模块路径的 `::` 换成 `-`（例如 `std-collections-hash_map.html`）。默认只收录 `pub` 条目，`--document-private-items` 放开过滤；检查不干净时报 `documentation requires a clean check` 并且不写文件。标准库的现成产物在 `std/.clue/doc/`，命令行细节见 [Clue 构建器](./clue.md)。

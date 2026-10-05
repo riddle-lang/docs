@@ -1,90 +1,133 @@
 # 错误处理
 
-Riddle 区分“值可能不存在”“操作可能失败”和“程序无法继续”三种情况，分别使用 `Option<T>`、`Result<T, E>` 和 `panic!`。
+Riddle 没有异常。可恢复的失败用 `Option` 和 `Result` 表达，不可恢复的路径用 `panic` 终止进程。三个类型都在 prelude 里，不需要导入。
 
-## Option 表示可能没有值
+## Option
 
-`Option<T>` 有 `Some(T)` 与 `None` 两个变体。标准库的 `parse_i32` 用它表示十进制文本是否能解析成整数：
+`Option<T>` 表示「可能有值」：
 
 ```riddle
-use std::parse::parse_i32;
+fun find_first_even(values: &[i32]) -> Option<i32> {
+    for value in values {
+        if value % 2 == 0 {
+            return Some(*value);
+        }
+    }
+    None
+}
 
-fun read_or_zero(text: &str) -> i32 {
-    match parse_i32(text) {
-        Some(value) => value,
-        None => 0,
+fun main() {
+    match find_first_even(&[1, 3, 4, 5]) {
+        Some(value) => println!("{}", value),
+        None => println!("none"),
     }
 }
 ```
 
-只需要一个后备值时，可以使用 `unwrap_or`：
+方法有 `is_some`、`is_none`、`unwrap`、`expect`、`unwrap_or`、`unwrap_or_else`、`map`、`map_or`、`and`、`and_then`、`or`、`or_else`。没有 `ok_or`、`filter`、`take`、`as_ref`。
+
+`unwrap` 和 `expect` 在 `None` 上调用会 panic：
 
 ```riddle
-let value = parse_i32("42").unwrap_or(0);
+fun main() {
+    let value: Option<i32> = None;
+    println!("{}", value.unwrap_or(0)); // 0
+    println!("{}", value.unwrap());     // panic
+}
 ```
 
-`Option` 当前提供 `is_some`、`is_none`、`unwrap`、`expect`、`unwrap_or`、`unwrap_or_else`、`map`、`map_or`、`and_then`、`and`、`or` 和 `or_else`。
+## Result
 
-Riddle 当前没有 Kotlin 式 `T?` 和 `null`。普通缺失值应建模为 `Option`。
-
-## Result 表示成功或失败
-
-`Result<T, E>` 的 `Ok(T)` 携带成功值，`Err(E)` 携带错误：
+`Result<T, E>` 区分成功与失败，`E` 由你决定：
 
 ```riddle
-use std::parse::parse_i32;
-
 fun parse_positive(text: &str) -> Result<i32, &str> {
-    match parse_i32(text) {
-        Some(value) => if value < 0 {
-            Err("expected a non-negative integer")
-        } else {
-            Ok(value)
-        },
-        None => Err("not an integer"),
+    match std::parse::parse_i32(text) {
+        Ok(value) => {
+            if value > 0 {
+                Ok(value)
+            } else {
+                Err("not positive")
+            }
+        }
+        Err(_) => Err("not a number"),
+    }
+}
+
+fun main() {
+    match parse_positive("42") {
+        Ok(value) => println!("{}", value),
+        Err(reason) => println!("{}", reason),
     }
 }
 ```
 
-`Result` 提供 `is_ok`、`is_err`、`unwrap`、`expect`、`unwrap_or`、`unwrap_or_else`、`map`、`map_err`、`map_or`、`and_then`、`and`、`ok` 和 `err`。需要保留错误内容或执行不同恢复逻辑时，优先使用 `match`，不要立即丢弃 `Err`。
+方法有 `is_ok`、`is_err`、`unwrap`、`expect`、`unwrap_or`、`unwrap_or_else`、`map`、`map_err`、`map_or`、`and`、`and_then`、`ok`、`err`。
 
-Riddle 当前的 `return` 是语句，不能像 Rust 那样直接写成 `None => return Err(...)`；让整个 `match` 产生 `Result` 即可。
+## 用 ? 传播
 
-## 使用问号传播错误
-
-后缀 `?` 会在 `Ok` 时取出成功值，在 `Err` 时提前返回：
+`?` 在失败时提前返回：操作数是 `Option` 就返回 `None`，是 `Result` 就返回 `Err`。
 
 ```riddle
-fun double_positive(text: &str) -> Result<i32, &str> {
-    let value = parse_positive(text)?;
-    Ok(value * 2)
+fun half(n: i32) -> Result<i32, &str> {
+    if n % 2 == 0 {
+        Ok(n / 2)
+    } else {
+        Err("odd")
+    }
+}
+
+fun twice(n: i32) -> Result<i32, &str> {
+    let h = half(n)?;
+    Ok(h * 2)
+}
+
+fun main() {
+    match twice(8) {
+        Ok(value) => println!("{}", value),
+        Err(reason) => println!("{}", reason),
+    }
 }
 ```
 
-`?` 可以用于 `Result<T, E>` 或 `Option<T>`，所在函数也必须返回同一种类型。错误类型相同时会直接传播；不同时，编译器要求操作数的错误类型通过 `Into` 转换为外层错误类型，没有匹配的 `Into` impl 时会回退尝试 `From`。相关诊断是 `E0061`、`E0062` 和 `E0063`。
+约束有三条：
 
-## panic 用于不可恢复路径
+- 操作数必须是 `Option` 或 `Result`，其他类型报 `E0061`；
+- 在返回 `Option` 的函数里才能对 `Option` 用 `?`，否则报 `E0062`；对 `Result` 用 `?` 时，外层返回类型必须是同一个 `Result` 枚举；
+- `Result` 的错误类型要能转成外层错误类型，先找 `Into::into` 再找 `From::from`，都找不到报 `E0063`。
 
-`panic!(...)` 返回 never 类型 `!`，因此可以出现在需要任意结果类型的分支，并支持与 `format!` 相同的编译期格式串检查：
+`?` 不是 trait 驱动的，没有 `Try`，也不能用在类型别名或包装类型上。
+
+## panic 与断言
+
+`panic!` 打印消息和源码位置，然后终止进程；它不做栈展开，也没有捕获机制：
 
 ```riddle
-fun require(valid: bool) -> i32 {
-    if valid { 42 } else { panic!("invalid state: {}", valid) }
+fun main() {
+    let limit = 3;
+    if limit > 2 {
+        panic!("limit {} is too large", limit);
+    }
 }
 ```
 
-运行时会向标准错误输出线程名、源文件、行列和格式化消息，然后调用 C `abort()`；当前没有栈展开、panic hook 或恢复机制。因为 panic 直接终止进程而不会展开栈，**panic 路径不会运行任何 `Drop` 析构函数**：持有 `FsFile` 等资源的值依赖操作系统回收句柄，用户析构函数中的副作用（日志、计数、显式释放）也不会发生。输入错误、文件错误或其他预期失败应使用 `Option` 或 `Result`，不要用 `panic!` 代替普通错误处理。
-
-## 断言和不可达路径
-
-`assert!` 检查布尔条件，`assert_eq!` / `assert_ne!` 会把左右表达式各求值一次，并在失败消息中通过 `Debug` 输出两侧值。三个宏都支持自定义格式化消息：
+`assert!`、`assert_eq!`、`assert_ne!` 以及对应的 `debug_assert*` 在条件不成立时 panic；`todo!`、`unimplemented!`、`unreachable!` 用固定消息 panic。它们都返回 `!`，可以放在需要其他类型的位置：
 
 ```riddle
-assert!(length > 0, "length must be positive: {}", length);
-assert_eq!(actual, expected);
-assert_ne!(state, State::Stopped, "worker must still be active");
+fun require_positive(value: i32) -> i32 {
+    if value > 0 {
+        value
+    } else {
+        unreachable!("checked by the caller")
+    }
+}
+
+fun main() {
+    assert_eq!(require_positive(2), 2);
+    println!("ok");
+}
 ```
 
-`debug_assert!`、`debug_assert_eq!` 和 `debug_assert_ne!` 使用相同语义。Riddle 当前没有 `debug_assertions` 构建配置，因此它们在所有构建中都会执行。
+`panic` 之后的退出码在 Windows 上是 3，其它平台是 134；`riddle run` 与编译产物一致。
 
-尚未实现的分支可以使用 `todo!()` 或 `unimplemented!()`；静态上应当不可达的分支可以使用 `unreachable!()`。它们都返回 `!`，支持可选的格式化消息，并复用 `panic!` 的源位置和 abort 诊断。
+`Option` 和 `Result` 在元素是 `Copy` 时也是 `Copy`，可以像普通值一样传递。它们没有 `Clone` 和 `PartialEq` 实现，比较内容要显式 `match`。

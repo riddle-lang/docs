@@ -1,42 +1,34 @@
-# 从 Rust 或 Kotlin 转到 Riddle
+# 从 Rust 或 Kotlin 过来
 
-Riddle 同时借用了 Rust 和 Kotlin 容易辨认的写法，但相同关键字不代表相同语义。本页只比较当前已经实现的行为。
+Riddle 借用了 Rust 和 Kotlin 里好认的写法，但关键字相同不代表语义相同。下面只比较当前已经实现的行为。
 
-## 语法速查
+## 速查
 
 | 主题 | Riddle | Rust | Kotlin |
 |------|--------|------|--------|
 | 函数 | `fun add(x: i32) -> i32` | `fn add(x: i32) -> i32` | `fun add(x: Int): Int` |
 | 不可变绑定 | `let value = 1;` | `let value = 1;` | `val value = 1` |
 | 可变绑定 | `let mut value = 1;` | `let mut value = 1;` | `var value = 1` |
-| 数据类型 | `struct`、`enum` | `struct`、`enum` | `class`、`data class`、`enum class` |
-| 共享行为 | `trait` + `impl` | `trait` + `impl` | `interface`、继承与扩展函数 |
+| 数据建模 | `struct`、`enum` | `struct`、`enum` | `class`、`data class`、`enum class` |
+| 共享行为 | `trait` + `impl` | `trait` + `impl` | 接口、继承、扩展函数 |
 | 分支匹配 | `match` | `match` | `when` |
-| 可恢复失败 | `Option`、`Result`、`?` | `Option`、`Result`、`?` | 可空类型、异常，以及库类型 `Result` |
-| 可增长顺序容器 | `Vector<T>` | `Vec<T>` | `MutableList<T>` |
-| 项目工具 | `clue` + `Clue.toml` | Cargo + `Cargo.toml` | Gradle/Maven |
+| 可恢复失败 | `Option`、`Result`、`?` | `Option`、`Result`、`?` | 可空类型与异常 |
+| 可增长序列 | `Vector<T>` | `Vec<T>` | `MutableList<T>` |
+| 项目工具 | `clue` + `Clue.toml` | Cargo | Gradle / Maven |
 
-## 与 Rust 的关键出入
+## 相对 Rust
 
-### 所有权相似，存储策略不同
+**没有生命周期参数。** 编译器自己追踪引用来源，判断值能不能留在栈上；引用需要活过当前栈帧时，值被提升到 GC 堆。移动后使用、借用冲突和 `Drop` 时序仍然按静态规则检查，GC 只影响存储位置。
 
-Riddle 和 Rust 都默认移动非 `Copy` 值，也都区分 `&T` 与 `&mut T`。区别在于，Riddle 不提供显式生命周期参数：编译器追踪引用来源，并在引用可能越过当前栈帧时把值提升到保守式非移动 GC 堆。
+**没有 `Box`、`Rc`、`Arc`。** 堆存储是自动的，共享一个值仍然靠引用，不靠引用计数。裸 `dyn Trait` 本身就是拥有所有权的值：开 GC 时分配在 GC 堆，关 GC 时走 `riddle_alloc` / `riddle_free`。
 
-GC 只决定存储位置，不代替所有权。移动后使用、冲突借用和 `Drop` 仍按静态规则检查。Riddle 没有显式的 `Box`、`Rc` 或 `Arc` 类型；裸 `dyn Trait` 已经是拥有值，GC 开启时使用 GC 堆，关闭时使用 `riddle_alloc` / `riddle_free`。
+**没有生命周期，也就没有生命周期标注带来的类型体操**，泛型和方法解析更简单，代价是表达力下降：需要精确控制值何时被回收时，只能靠作用域和 `Drop`。
 
-### 语法只是子集与重新组合
+**声明式宏（`macro_rules!`）不存在。** 需要生成代码时写过程宏，见[编写过程宏](./proc-macros.md)。
 
-Riddle 使用 Rust 风格的尾表达式、`struct`、`enum`、`trait`、`impl`、`match`、`if let`、`let else`、`mod` 和 `use`，但当前没有区间模式或声明式宏。Riddle 支持对象安全方法的借用 trait object（`&dyn Trait` / `&mut dyn Trait`）和拥有 trait object（`dyn Trait`），也支持拥有或借用的 `dyn Fn` / `dyn FnMut` / `dyn FnOnce`；泛型和其他 callable 主要通过静态单态化实现。
+## 相对 Kotlin
 
-### Cargo 与 Clue 不是同一个工具
-
-Clue 借用了部分 Cargo 清单形状，依赖支持 path、git 和 sparse registry，并通过 `Clue.lock` 锁定解析结果；它仍不是 Cargo，不能把未实现的 Cargo 选项直接写入 `Clue.toml`。
-
-## 与 Kotlin 的关键出入
-
-### `fun` 相同，返回规则不同
-
-Riddle 的块可以产生值，函数体最后一个没有分号的表达式就是返回值：
+**`fun` 相同，块的返回值规则不同。** 函数体的最后一个表达式就是返回值，不需要 `return`：
 
 ```riddle
 fun double(value: i32) -> i32 {
@@ -44,20 +36,14 @@ fun double(value: i32) -> i32 {
 }
 ```
 
-Kotlin 的块体函数通常使用显式 `return`，单表达式函数则写成 `fun double(value: Int) = value * 2`。不要因为两者都使用 `fun` 就照搬函数体规则。
+Kotlin 里等价写法要么用 `return`，要么写成单表达式函数。别因为都叫 `fun` 就照搬函数体规则。
 
-### 没有类、可空类型或异常语法
+**没有类、可空类型和异常。** 数据用结构体，共享行为用 trait 和 impl。可能缺失的值用 `Option<T>`，可恢复失败用 `Result<T, E>`，不可恢复路径用 `panic`。没有 `null`、`throw`、`try`、`catch`。
 
-Riddle 当前用结构体表示数据，用 trait 和 impl 表示共享行为，没有类继承、`T?`、`null`、`throw`、`try` 或 `catch`。可能缺失的值使用 `Option<T>`，可恢复失败使用 `Result<T, E>`，不可恢复路径使用 `panic`。
+**值会移动。** 把非 `Copy` 值传出去之后原绑定就不能再用。提升到 GC 堆不会把值变成可以随便共享的对象，也不会取消借用检查。实现 `Drop` 的值在所有者结束时析构。
 
-### 不是 Kotlin 式托管对象模型
+**平台支持只有 C11 后端。** 能否链接由目标组件和本机 C 工具链决定，没有 JVM、JS 或 Wasm 目标。
 
-Riddle 值会移动，引用会借用，实现 `Drop` 的值在所有者结束时确定性析构。逃逸到 GC 堆不会把值变成可随意共享的对象，也不会取消借用检查。
+## 读外部教程时
 
-### 平台与生态范围不同
-
-Kotlin 文档按 JVM、Native、JavaScript、Wasm 和多平台组织内容。Riddle 当前只维护 C11 后端，并由目标组件与系统 C 工具链共同决定能否链接；因此本书不会复制 Kotlin 的平台章节。
-
-## 阅读外部教程时的原则
-
-可以借用 Rust Book 的概念顺序、Rust 圣经的学习路径和 Kotlin 文档的分类方式，但每段代码都应按 Riddle 的[形式化语法](./grammar.md)和[当前工具链状态](./compiler-status.md)重新确认。遇到相似名称时，先查本书对应章节，不要默认 API 或边界条件也相同。
+Rust 和 Kotlin 的资料可以借来理解概念，但每段代码都要按[形式化语法](./grammar.md)和[当前工具链状态](./compiler-status.md)重新确认。名字相同的地方，边界条件往往不同。

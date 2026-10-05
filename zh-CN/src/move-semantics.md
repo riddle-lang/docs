@@ -1,126 +1,163 @@
 # 移动语义
 
-Riddle 中，值默认通过移动传递。
-移动意味着一个值从一个绑定转移到另一个绑定后，原来的绑定不再拥有这个值。
-
-## 赋值会移动
-
-看一个结构体例子：
+赋值、传参和模式绑定默认移动非 `Copy` 值。移动之后，原来的绑定不再有效：
 
 ```riddle
-struct Foo {
-    x: i32,
-    y: i32,
+struct Point { x: i32, y: i32 }
+
+fun main() {
+    let point = Point { x: 1, y: 2 };
+    let moved = point;
+    println!("{}", moved.x);
+    println!("{}", point.x); // E0100：point 已经被移动
+}
+```
+
+`consume(point)` 这样的调用同样移动实参。移动语义让「谁负责这个值」始终唯一，析构也因此有确定的位置。
+
+## Copy
+
+这些类型按复制传递，不移动：
+
+- 整数、浮点、`bool`、`char`、`()`、`!`；
+- `&T`、`*const T`、`*mut T`；
+- 具名函数项；
+- 元素都是 `Copy` 的元组和数组。
+
+`&mut T` **不是** `Copy`，第一次使用之后再使用会报 `E0100`。
+
+结构体和枚举不会因为字段都是标量就自动 `Copy`，必须显式声明：
+
+```riddle
+#[derive(Copy, Clone)]
+struct Point { x: i32, y: i32 }
+
+fun main() {
+    let point = Point { x: 1, y: 2 };
+    let first = point;
+    let second = point;
+    println!("{}", first.x + second.x);
+}
+```
+
+也可以手写 `impl std::marker::Copy for Point {}`。两种写法都要求所有字段都是 `Copy`，否则报 `E0041`；`Copy` 与 `Drop` 不能同时实现，报 `E0055`。标准库只为标量提供了 `Copy` 实现，元组、数组和引用靠编译器内建规则。
+
+`Clone` 是另一个 trait，要显式实现或派生，`Copy` 不会自动带来 `Clone`。
+
+## 借用代替移动
+
+只想读值就借用，所有权留在原处：
+
+```riddle
+struct Point { x: i32, y: i32 }
+
+fun distance_squared(point: &Point) -> i32 {
+    point.x * point.x + point.y * point.y
 }
 
 fun main() {
-    let a = Foo { x: 1, y: 1 };
-    let b = a;
-    print!("{}", a); // error: a 已经被移动
-    print!("{}", b);
+    let point = Point { x: 3, y: 4 };
+    println!("{}", distance_squared(&point));
+    println!("{}", point.x);
 }
 ```
 
-`let b = a;` 之后，`Foo` 的值移动到了 `b`。`a` 不再可用。
+## 解引用按值读取
 
-## 传参会移动
-
-把值传给函数也会移动：
+`*reference` 读取引用指向的值：`T: Copy` 时得到副本，否则是一次移动，而引用并不拥有 `T`，所以报 `E0308`：
 
 ```riddle
-fun consume(foo: Foo) {
-    print!("{}", foo.x)
+fun main() {
+    let pair = (1i32, 2i32);
+    let reference = &pair;
+    let copy = *reference;
+    println!("{} {}", copy.0, copy.1);
 }
+```
+
+## 模式绑定与部分移动
+
+`match` 和 `for` 里的绑定会取得匹配值的所有权。绑定 `Copy` 字段只是复制，绑定非 `Copy` 字段才是移动：
+
+```riddle
+struct Holder { items: Vector<i32>, name: &str }
 
 fun main() {
-    let foo = Foo { x: 1, y: 1 };
-    consume(foo);
-    print!("{}", foo); // error: foo 已经被移动
+    let holder = Holder { items: Vector::new(), name: "h" };
+    match holder {
+        Holder { items } => println!("{}", items.len()),
+    }
+    println!("{}", holder.name); // 未绑定的字段仍然可用
 }
 ```
 
-这种规则能避免“一个值到底由谁负责”的问题。
-
-## 为什么只有移动
-
-很多语言同时存在复制、共享引用、隐式别名和可变状态。
-这些能力都很方便，但组合在一起时，程序行为会变得难以推理。
-
-Riddle 选择让值默认移动，是为了让资源流向更明显：
-
-- 看到赋值，就知道所有权发生转移；
-- 看到函数调用，就知道参数被交给函数；
-- 需要共享时，显式使用引用；
-- 引用逃逸时，由语言自动提升到 GC。
-
-## 需要继续使用值时怎么办
-
-如果只是临时查看一个值，可以借用它：
+`let` 解构的粒度和 `match` 一样：模式移动了哪些字段，原值就只在那些字段上失效，没被绑定的字段照常可用：
 
 ```riddle
-fun inspect(foo: &Foo) {
-    print!("{}", foo.x)
-}
+struct Holder { items: Vector<i32>, name: &str }
 
 fun main() {
-    let foo = Foo { x: 1, y: 1 };
-    inspect(&foo);
-    print!("{}", foo); // 可以继续使用
+    let holder = Holder { items: Vector::new(), name: "h" };
+    let Holder { items } = holder;
+    println!("{}", items.len());
+    println!("{}", holder.name);      // ok：name 没被移动
+    println!("{}", holder.items.len()); // E0100：items 已经移出去了
 }
 ```
 
-引用没有逃逸时，`foo` 仍然保留在当前作用域中。
+字段全是 `Copy` 类型时，解构只产生副本，原值照常可用。
 
-## Copy 类型
+块表达式的尾表达式也是移动：块的值要比块自己的局部活得久，所以 `{ holder }` 无论结果是被走值还是只被借用都移动了 `holder`，之后再读 `holder` 报 `E0100`。写块是为了临时构造一个值时（`println!("{}", { ...; buffer })`、`format!(…).as_str()`）不用操心这一点，值的所有权已经交给块的结果，析构只在结果上做一遍。
 
-有些类型不会在赋值和传参时移动，而是复制。标量、共享引用、原始指针和命名函数项属于内置 Copy 候选。闭包值拥有环境和析构函数，因此按值传递时会移动。
-
-用户类型可以通过实现 std 中的 lang `Copy` 进入复制语义：
+实现了 `Drop` 的类型不允许通过模式移出非 `Copy` 字段，报 `E0305`——用户析构函数必须总能看到完整的 `self`：
 
 ```riddle
-struct Point {
-    x: i32,
-    y: i32,
-}
+struct Resource { name: std::string::String }
 
-impl std::marker::Copy for Point {}
-
-fun main() {
-    let p = Point { x: 1, y: 2 };
-    let q = p;
-    let r = p; // OK：Point 实现了 Copy
-}
-```
-
-`std/lib.rid` 已经提供 `std::marker::Copy`，普通程序不需要自己声明这个 trait。只有带 `#[lang = "copy"]` 的 Copy trait 会被 move checker 识别。
-
-解引用不会改变按值使用的规则。`let value = *reference` 会读取 `reference` 指向的 `T`：`T: Copy` 时得到副本；否则因为引用不拥有 `T`，从解引用位置搬出值会报 `E0308`。如果要修改原值，应保留 `&mut T`，例如 `let mut point = f(&mut p); point.x = 1;`；`let value = *point` 则不是引用别名。
-
-## 引用模式与自动借用
-
-显式 `&pattern` / `&mut pattern` 与显式解引用相同：它们读取引用指向的值，内部按值绑定只允许取得 `Copy` 内容。模式不会移动引用本身，临时借用会在没有绑定继续持有它时结束：
-
-```riddle
-fun example() -> i32 {
-    let mut original = 3;
-    let (&mut copied, plain) = (&mut original, 4);
-    original = 5; // OK：copied 是副本，临时借用已经结束
-    copied + plain + original
-}
-```
-
-结构化模式自动解引用 `&T` / `&mut T` 时则会创建字段重借用。绑定会保持对原位置的共享或可变借用，直到所有相关绑定的最后一次使用；可变重借用存活期间，父 `&mut` 会被冻结。不同字段的重借用仍按位置分别追踪。
-
-## 模式绑定也会移动
-
-`match` 和 `for` 中的非 `Copy` 绑定会接管匹配值的所有权：
-
-```riddle
-match value {
-    Some(resource) => {
-        consume(resource);
+impl std::ops::Drop for Resource {
+    fun drop(&mut self) {
+        println!("dropping");
     }
 }
+
+fun main() {
+    let resource = Resource { name: std::string::String::from_str("file") };
+    let Resource { name } = resource; // E0305
+    println!("{:?}", name);
+}
 ```
 
-`resource` 没有被继续移动时会在当前 arm 结束时析构；传给 `consume` 后，arm 不会再次析构它。结构体模式只移动实际绑定的非 `Copy` 字段，未绑定字段和按 `Copy` 取得的字段仍可在 `match` 后使用；整个原值因为处于部分移动状态而不能再作为整体使用。`for` 的当前元素遵循同一规则，未取出的元素继续由迭代器持有。为了保证用户析构函数始终能看到完整的 `self`，在 `match` 和 `for` 的模式中，实现了 `Drop` 的类型不能通过解构模式移出非 `Copy` 字段，包括嵌套在普通聚合类型中的 `Drop` 值；这条限制当前不检查 `let` 解构。
+## 析构顺序
+
+- 同一个作用域里的局部变量按声明**逆序**析构；
+- 聚合值内部按字段**声明顺序**析构；
+- 类型自己实现了 `Drop` 时，先调用用户的 `drop(&mut self)`，再按声明顺序析构字段。
+
+```riddle
+struct First { n: i32 }
+struct Second { n: i32 }
+
+impl std::ops::Drop for First {
+    fun drop(&mut self) { println!("first {}", self.n); }
+}
+
+impl std::ops::Drop for Second {
+    fun drop(&mut self) { println!("second {}", self.n); }
+}
+
+struct Pair { first: First, second: Second }
+
+fun main() {
+    let pair = Pair { first: First { n: 1 }, second: Second { n: 2 } };
+    let last = First { n: 3 };
+    println!("end");
+}
+```
+
+输出是 `end`、`first 3`（`last` 后声明，先析构）、`first 1`、`second 2`（`pair` 的字段按声明顺序）。
+
+部分移动只清掉对应字段的析构标记，其余字段照常析构。
+
+## 控制流与借用
+
+借用在持有它的绑定最后一次使用之后结束，循环体里的冲突只报一次。具体规则、冲突错误码和逃逸行为见[引用、借用与逃逸](./references-and-escape.md)。

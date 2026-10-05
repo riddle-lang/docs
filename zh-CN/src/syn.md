@@ -1,85 +1,74 @@
 # 内置 `syn` 与 `quote!`
 
-Riddle 的过程宏包内置 `syn` 模块和 `quote!`。它们随 Clue 注入过程宏包，
-不需要在 `Clue.toml` 中声明额外依赖：
-
-```riddle
-use syn::{Data, DeriveInput, parse};
-
-#[proc_macro_derive(Answer)]
-pub fun derive_answer(input: TokenStream) -> TokenStream {
-    let parsed = match parse::<DeriveInput>(input) {
-        Result::Ok(value) => value,
-        Result::Err(error) => {
-            error.emit();
-            return TokenStream::new();
-        },
-    };
-
-    match &parsed.data {
-        Data::Struct(_) => {},
-        Data::Enum(_) => {
-            Diagnostic::error(
-                parsed.ident.span(),
-                "Answer can only be derived for structs",
-            ).emit();
-            return TokenStream::new();
-        },
-    }
-
-    let generated = Ident::new("generated_answer", parsed.ident.span());
-    quote! {
-        fun #generated() -> i32 { 42 }
-    }
-}
-```
-
-使用方只需依赖并导入这个宏包：
-
-```riddle
-use answer_macros::Answer;
-
-#[derive(Answer)]
-struct Marker {}
-
-fun main() -> i32 {
-    generated_answer()
-}
-```
+`syn` 是随标准库源码发布的模块（`std/std/syn.rid`），`quote!` 是编译器内置的函数宏。两者都不属于随程序链接的 std：编译过程宏包时，`clue` 把 `std/std/proc_macro.rid` 与 `std/std/syn.rid` 的文本前置进宿主源码，宏包因此直接写`use syn::{...}`就能用，不需要在`Clue.toml`里声明依赖，`quote!`也无需导入。普通程序里既没有`syn`模块也没有`TokenStream`类型，本页片段只在过程宏包内成立，所以全部用 text 围栏。
 
 ## 解析入口
 
-`syn` 提供两个通用解析函数：
+三个函数都返回 `Result<T, Error>`：
 
-```riddle
+```text
 use syn::{Expr, Type, parse, parse_str};
 
-let expr = parse::<Expr>(input);
-let ty = parse_str::<Type>("&mut Vector<i32>");
+let expr = parse::<Expr>(tokens);          // 从 TokenStream 解析
+let ty = parse_str::<Type>("&mut [i32; 2]"); // 先词法分析，再解析
 ```
 
-- `parse::<T>(tokens)` 从 `TokenStream` 解析实现了 `Parse` 的类型。
-- `parse_str::<T>(source)` 先对字符串进行词法分析，再执行同样的解析。
-- 失败时返回 `syn::Error`；`Error` 包含 `span` 和 `message`，可用
-  `error.emit()` 发出编译诊断。
+- `parse::<T>(tokens: TokenStream) -> Result<T, Error>`：从流的开头解析一个 `T`。
+- `parse_str::<T>(source: &str) -> Result<T, Error>`：字符串先过 `TokenStream::from_str`，词法错误（`LexError`）转成带位置的 `Error`。
+- `ParseStream::parse::<T>() -> Result<T, Error>`：从当前游标继续解析，用在自定义 `Parse` 里。
 
-当前内置实现为以下类型提供 `Parse`：
+实现了 `Parse` 的类型只有七个：
 
-| 类型 | 用途 |
+| 类型 | 接受的输入 |
 | --- | --- |
-| `DeriveInput` | 解析 derive 宏接收的结构体或枚举 |
-| `File` | 解析由多个条目或语句组成的 token 流 |
-| `Item` | 解析一个顶层条目 |
-| `Stmt` | 解析一条语句 |
-| `Expr` | 解析一个表达式 |
-| `Type` | 解析一个类型 |
-| `Pat` | 解析一个模式 |
+| `DeriveInput` | `struct` 或 `enum` 的完整定义 |
+| `File` | 一串条目与语句 |
+| `Item` | 一个顶层条目 |
+| `Stmt` | 一条语句 |
+| `Expr` | 一个表达式 |
+| `Type` | 一个类型 |
+| `Pat` | 一个模式 |
 
-### 自定义 `Parse`
+`Error` 的两个字段都是公开的：
 
-过程宏可以为自己的输入类型实现 `Parse`：
+```text
+pub struct Error {
+    pub span: Span,
+    pub message: String,
+}
+```
 
-```riddle
+`Error::new(span, message)`构造，`error.emit()`把它作为 error 级诊断交给编译器。解析失败时先`emit()`再返回空`TokenStream`，调用点就会看到一条带位置的错误，而不是“宏没有输出”。
+
+## ParseStream
+
+`ParseStream`保留整个 token 流和一个游标：
+
+```text
+pub struct ParseStream {
+    tokens: TokenStream,
+    index: usize,
+}
+```
+
+| 方法 | 返回 | 行为 |
+| --- | --- | --- |
+| `new(tokens)` | `ParseStream` | 游标置于开头 |
+| `is_empty()` | `bool` | 游标是否已经越过最后一个 token |
+| `peek_ident(expected)` | `bool` | 下一个 token 是否是同名标识符，不移动游标 |
+| `peek_punct(expected)` | `bool` | 下一个 token 是否是给定标点，不移动游标 |
+| `span()` | `Span` | 当前 token 的跨度；已到末尾时是`Span::call_site()` |
+| `next()` | `Option<TokenTree>` | 取出下一个 token 并前移游标 |
+| `remaining()` | `TokenStream` | 游标之后的全部 token 副本，不移动游标 |
+| `parse::<T>()` | `Result<T, Error>` | 把游标交给 `T` 的 `Parse` 实现 |
+
+接口直接操作结构化 token，不做字符串切分。
+
+## 自定义 Parse
+
+自定义类型只要实现 `Parse` 就能被 `parse`、`parse_str` 和 `input.parse::<T>()` 解析：
+
+```text
 use syn::{Error, Parse, ParseStream};
 
 struct NameInput {
@@ -93,112 +82,124 @@ impl Parse for NameInput {
                 if input.is_empty() {
                     Result::Ok(NameInput { name })
                 } else {
-                    Result::Err(Error::new(input.span(), "unexpected token"))
+                    Result::Err(Error::new(input.span(), "expected end of input"))
                 }
             },
-            Option::Some(tree) => {
-                Result::Err(Error::new(tree.span(), "expected identifier"))
-            },
-            Option::None => {
-                Result::Err(Error::new(input.span(), "expected identifier"))
-            },
+            Option::Some(tree) => Result::Err(Error::new(tree.span(), "expected an identifier")),
+            Option::None => Result::Err(Error::new(input.span(), "expected an identifier")),
         }
     }
 }
 ```
 
-`ParseStream` 提供 `is_empty()`、`peek_ident()`、`peek_punct()`、`span()`、
-`next()`、`remaining()` 和 `parse::<T>()`。这些接口直接操作结构化 token，
-不会依赖字符串切分。
+`Parse` 的签名是 `fun parse(input: &mut ParseStream) -> Result<Self, Error>`，实现里写出具体类型即可。
 
-## `DeriveInput`
+## DeriveInput
 
-`DeriveInput` 为 derive 宏提供结构化输入：
+derive 宏的输入通常是整个条目，`DeriveInput`把它拆成可读的字段：
 
-```riddle
+```text
 pub struct DeriveInput {
     pub attrs: Vector<Attribute>,
     pub vis: Visibility,
     pub ident: Ident,
     pub generics: Generics,
     pub data: Data,
+    tokens: TokenStream,   // 私有：完整输入的 token
 }
 ```
 
-`Visibility` 目前分为 `Inherited` 和 `Public`。`Data` 分为：
+`pub`换成`Visibility::Public`，没有可见性修饰符则是`Visibility::Inherited`。`Data`分两支：
 
-```riddle
+```text
 pub enum Data {
     Struct(DataStruct),
     Enum(DataEnum),
 }
+
+pub struct DataStruct {
+    pub fields: TokenStream,     // 花括号里的原始 token
+    pub named: Vector<Field>,
+}
+
+pub struct DataEnum {
+    pub variants: TokenStream,   // 花括号里的原始 token
+    pub items: Vector<Variant>,
+}
 ```
 
-结构体字段通过 `DataStruct.named` 和原始字段 token 提供；枚举通过
-`DataEnum.items` 提供结构化变体。字段形状使用 `Fields` 表示：
+字段与变体：
 
-```riddle
+```text
+pub struct Field {
+    pub attrs: Vector<Attribute>,
+    pub vis: Visibility,
+    pub ident: Ident,
+    pub ty: Type,
+    pub tokens: TokenStream,
+}
+
 pub enum Fields {
     Unit,
     Named(Vector<Field>),
     Unnamed(Vector<Type>),
 }
-```
 
-泛型信息位于 `Generics`：
-
-- `tokens` 保存 `<...>`；
-- `where_clause` 保存 `where ...`；
-- `params` 包含 `GenericParam::Type` 和 `GenericParam::Const`；
-- `predicates` 包含解析后的 `WherePredicate`。
-
-`Attribute`、`Field`、`Variant`、泛型参数和 where 谓词同时保留自己的
-`TokenStream`，因此宏既可以读取结构化字段，也可以无损地把原节点写回输出。
-`DeriveInput::to_token_stream()` 返回完整输入的 token 副本。
-
-## 语法节点
-
-除 `DeriveInput` 外，`Item`、`Stmt`、`Expr`、`Type` 和 `Pat` 会校验当前
-Riddle 语法并按类别保存 token。这些节点不是每个语法细节都有独立字段的完整 AST；
-需要检查具体细节时，可以匹配类别后读取该变体中的 `TokenStream`，或使用
-`Visit`、`Fold` 递归处理嵌套语法。
-
-### `Item`
-
-支持模块、`use`、函数、结构体、枚举、trait、impl、常量、类型别名和
-`extern` 条目：
-
-```riddle
-match item {
-    Item::Function(tokens) => println!("{}", tokens.to_string()),
-    Item::Struct(tokens) => println!("{}", tokens.to_string()),
-    _ => {},
+pub struct Variant {
+    pub attrs: Vector<Attribute>,
+    pub ident: Ident,
+    pub fields: Fields,
+    pub tokens: TokenStream,
 }
 ```
 
-### `Stmt`
+`Attribute.tokens`是两个 token：`#`加方括号组。要按内容判断就`attr.tokens.to_string().contains("skip")`。
 
-`Stmt` 分为 `Item`、`Local`、`Expr`、`Break`、`Continue` 和 `Return`。
-`File.stmts` 保存从一个完整 token 流解析出的语句。
+泛型与 where 子句分开保存：
 
-### `Expr`
+```text
+pub struct Generics {
+    pub tokens: TokenStream,       // <...>，空则无泛型参数
+    pub where_clause: TokenStream, // where ...，空则没有
+    pub params: Vector<GenericParam>,
+    pub predicates: Vector<WherePredicate>,
+}
 
-`Expr` 覆盖字面量、路径、块、元组、数组、结构体字面量、调用、字段访问、
-索引、一元和二元表达式、转换、`?`、闭包、`if`、`while`、`for`、`match`、
-`unsafe` 和宏调用。
+pub enum GenericParam {
+    Type(TypeParam),
+    Const(ConstParam),
+}
+```
 
-### `Type`
+`tokens`与`where_clause`是原样的 token，直接插进`quote!`就能还原出`impl<T> Foo<T> where T: Copy`这样的头部。
 
-`Type` 覆盖路径、引用、指针、元组、数组、常量类型、never 类型、
-`impl Trait` 和宏类型。
+`DeriveInput`的私有字段`tokens`保存完整输入，`to_token_stream()`返回它的副本，`ToTokens`也写同一份内容。用结构体模式拆`DeriveInput`会漏掉这个私有字段：当前实现下拆完再移动`data`会让宏进程卡住，直到单次展开的 10 秒超时，因此按字段取值——`parsed.ident`、`parsed.generics.tokens`、`&parsed.data`。
 
-### `Pat`
+## 其他语法节点
 
-`Pat` 覆盖通配符、字面量、元组、结构体、枚举、绑定、引用和宏模式。
+`Item`、`Stmt`、`Expr`、`Type`、`Pat` 会校验语法并记录类别，每个变体存的是该节点的完整 token：
 
-所有上述节点以及 `DeriveInput` 的结构化子节点都实现 `ToTokens`：
+| 节点 | 变体 |
+| --- | --- |
+| `Item` | `Module`、`Use`、`Function`、`Struct`、`Enum`、`Trait`、`Impl`、`Const`、`TypeAlias`、`Extern` |
+| `Stmt` | `Item`、`Local`、`Expr`、`Break`、`Continue`、`Return` |
+| `Expr` | `Literal`、`Path`、`Block`、`Tuple`、`Array`、`Struct`、`Call`、`Field`、`Index`、`Unary`、`Binary`、`Cast`、`Try`、`Closure`、`If`、`While`、`For`、`Match`、`Unsafe`、`Macro` |
+| `Type` | `Path`、`Reference`、`Pointer`、`Tuple`、`Array`、`Const`、`Never`、`ImplTrait`、`Macro` |
+| `Pat` | `Wildcard`、`Literal`、`Tuple`、`Struct`、`Enum`、`Binding`、`Reference`、`Macro` |
 
-```riddle
+这些节点没有字段级 AST：`Expr::Binary`只知道自己是二元表达式，左右操作数要从 token 里读，或者交给 `Visit`、`Fold` 递归处理。`Stmt`是唯一嵌套别的节点的变体（`Stmt::Item`持有`Item`）。
+
+## ToTokens
+
+`ToTokens`是往`TokenStream`写 token 的接口，`syn`重导出了它：
+
+```text
+pub trait ToTokens {
+    fun to_tokens(&self, output: &mut TokenStream);
+}
+```
+
+```text
 use syn::{Expr, ToTokens, parse_str};
 
 let expr = parse_str::<Expr>("value + 1").unwrap();
@@ -206,63 +207,55 @@ let mut output = TokenStream::new();
 expr.to_tokens(&mut output);
 ```
 
-## `quote!`
+`syn`为这些类型实现了它：`File`、`Item`、`Stmt`、`Expr`、`Type`、`Pat`、`Attribute`、`Field`、`Variant`、`Fields`、`DataStruct`、`DataEnum`、`Data`、`Visibility`、`Generics`、`GenericParam`、`TypeParam`、`ConstParam`、`WherePredicate`、`DeriveInput`。`proc_macro`一侧的`TokenStream`、`TokenTree`、`Group`、`Ident`、`Punct`、`Literal`、`String`、`str`同样实现了它，所以这些值都能直接用在`quote!`的`#`后面。
 
-`quote!` 把 Riddle token 写入新的 `TokenStream`。`#name` 会插入实现了
-`ToTokens` 的值：
+## 遍历：Visit
 
-```riddle
-let name = Ident::new("answer", Span::call_site());
-let value = parse_str::<Expr>("40 + 2").unwrap();
+`Visit`按借用遍历。七个方法都有默认实现，只覆盖需要观察的节点，并在自定义实现里调用对应的`walk_*`继续递归：
 
-let output = quote! {
-    fun #name() -> i32 { #value }
-};
+```text
+pub trait Visit {
+    fun visit_file(&mut self, node: &File) { walk_file(self, node); }
+    fun visit_item(&mut self, node: &Item) { walk_item(self, node); }
+    fun visit_stmt(&mut self, node: &Stmt) { walk_stmt(self, node); }
+    fun visit_expr(&mut self, node: &Expr) { walk_expr(self, node); }
+    fun visit_type(&mut self, node: &Type) { walk_type(self, node); }
+    fun visit_pat(&mut self, node: &Pat) { walk_pat(self, node); }
+    fun visit_derive_input(&mut self, node: &DeriveInput) { walk_derive_input(self, node); }
+}
 ```
 
-`quote!` 支持使用 `*` 重复一个向量，并可在 `*` 前放置一个分隔 token：
+```text
+use syn::{Expr, Type, Visit, parse_str};
 
-```riddle
-let tuple = quote! { (#(#names),*) };
-```
-
-同一个重复块中的多个向量会按下标配对：
-
-```riddle
-let fields = quote! { { #(#names: #values),* } };
-```
-
-参与同一重复块的向量长度必须相等；长度不一致会使宏展开失败。重复块必须至少
-包含一个 `#name`。当前重复语法支持 `#(...)*` 和带单个分隔 token 的
-`#(...),*` 形式。
-
-## 遍历与改写
-
-`Visit` 以借用方式遍历节点。覆盖方法后调用对应的 `walk_*`，即可继续递归：
-
-```riddle
-use syn::{Expr, Visit};
-
-struct ExprCounter {
-    count: usize,
+struct Counter {
+    exprs: usize,
+    types: usize,
 }
 
-impl Visit for ExprCounter {
+impl Visit for Counter {
     fun visit_expr(&mut self, node: &Expr) {
-        self.count += 1usize;
+        self.exprs += 1usize;
         syn::walk_expr(self, node);
     }
+
+    fun visit_type(&mut self, node: &Type) {
+        self.types += 1usize;
+        syn::walk_type(self, node);
+    }
 }
+
+let mut counter = Counter { exprs: 0usize, types: 0usize };
+counter.visit_expr(&parse_str::<Expr>("value.call(1)? + 2").unwrap());
 ```
 
-可覆盖的方法为 `visit_file`、`visit_item`、`visit_stmt`、`visit_expr`、
-`visit_type`、`visit_pat` 和 `visit_derive_input`。对应的递归函数分别为
-`walk_file`、`walk_item`、`walk_stmt`、`walk_expr`、`walk_type`、
-`walk_pat` 和 `walk_derive_input`。
+递归函数是`syn::walk_file`、`syn::walk_item`、`syn::walk_stmt`、`syn::walk_expr`、`syn::walk_type`、`syn::walk_pat`、`syn::walk_derive_input`。
 
-`Fold` 取得节点所有权并返回改写后的节点：
+## 改写：Fold
 
-```riddle
+`Fold`按值取得节点并返回改写后的节点。默认实现做递归，覆盖某个方法后调用同名的`syn::fold_*`即可回到默认递归：
+
+```text
 use syn::{Expr, Fold, parse_str};
 
 struct ReplaceTwo {}
@@ -274,24 +267,63 @@ impl Fold for ReplaceTwo {
             _ => false,
         };
         if replace {
-            return parse_str::<Expr>("3").unwrap();
+            match parse_str::<Expr>("3") {
+                Result::Ok(value) => { return value; },
+                Result::Err(_) => {},
+            }
         }
         syn::fold_expr(self, node)
     }
 }
 ```
 
-可覆盖的方法为 `fold_file`、`fold_item`、`fold_stmt`、`fold_expr`、
-`fold_type`、`fold_pat` 和 `fold_derive_input`。在自定义方法末尾调用同名的
-`syn::fold_*` 函数可执行默认的递归改写。
+`syn::fold_expr(&mut folder, node)`只做默认递归，不会回调`folder.fold_expr`，所以不会自递归。可覆盖的方法是`fold_file`、`fold_item`、`fold_stmt`、`fold_expr`、`fold_type`、`fold_pat`、`fold_derive_input`，对应`syn::fold_file`等七个自由函数。
 
-## 当前边界
+## quote!
 
-- `DeriveInput` 只接受结构体和枚举；Riddle 当前没有 union 条目。
-- 通用语法节点保留分类后的 token，不提供与 Rust `syn` 完全同构的字段级 AST。
-- `ParseStream` 提供最小的 token 游标接口，不包含 Rust `syn` 的全部解析宏和
-  parser combinator。
-- `quote!` 重复目前使用 `*`，分隔符为一个 token。
+`quote!`把写在一对花括号里的 token 拼成新的`TokenStream`。`#name`插入实现了`ToTokens`的值：
 
-底层 `TokenStream`、`TokenTree`、`Span` 和诊断接口见
-[Clue 构建器的过程宏章节](./clue.md#过程宏)。
+```text
+let name = Ident::new("answer", Span::call_site());
+let body = parse_str::<Expr>("40 + 2").unwrap();
+
+let output = quote! {
+    fun #name() -> i32 { #body }
+};
+```
+
+`#(...)*`是重复块，`*`前可以放一个分隔 token：
+
+```text
+let mut names: Vector<Ident> = Vector::new();
+names.push(Ident::new("first", Span::call_site()));
+names.push(Ident::new("second", Span::call_site()));
+
+let tuple = quote! { (#(#names),*) };
+// tuple.to_string() == "(first , second)"
+```
+
+块内有多个`#name`时按下标配对：
+
+```text
+let zipped = quote! { { #(#names: #values),* } };
+// zipped.to_string() == "{first : one , second : two}"
+```
+
+规则：
+
+- 重复变量要有`len()`和`as_slice()`，两次迭代之间按`#name.as_slice()[i]`取值，`Vector<T>`满足这个要求。
+- 参与同一个重复块的变量长度必须相等，否则宏进程运行时 panic（`quote repetition variables have different lengths`），本次展开以 E0400 失败。
+- 重复块至少要有一个`#name`，否则展开报错，消息以`quote repetition must contain`开头。
+- 分隔符只能是一个 token，写成`#(...),*`或`#(...);*`，不能是 token 序列。
+- `to_string()`按 token 渲染并补空格，所以比较结果时要写`(first , second)`这种形式。
+
+`quote!`展开出的代码构造`crate::TokenStream`，因此它只在过程宏宿主里可用，普通程序里没有这个类型。
+
+## 边界
+
+- 通用语法节点只保留分类后的 token，不提供与字段一一对应的 AST。
+- `DeriveInput`只接受`struct`与`enum`的定义形式，且必须带花括号体——Riddle 的结构体只有命名字段一种写法（`struct Wrapper(i32);`是解析错误），也没有 union 条目，所以`Fields::Unnamed`只出现在枚举变体上。
+- `ParseStream`只有`peek_*`、`next`、`remaining`、`parse`这几个接口，没有 Rust `syn` 的解析宏与组合子。
+- `Span::mixed_site()`当前等价于`Span::call_site()`，`Span::join`返回`Option<Span>`。
+- 重复语法只有`*`，没有`?`或`+`。

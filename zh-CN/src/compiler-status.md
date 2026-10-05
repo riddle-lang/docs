@@ -1,364 +1,216 @@
 # 当前工具链状态
 
-Riddle 仍处于开发阶段。本页记录当前仓库已经实现并被测试覆盖的能力，避免把未来设计误当成可用功能。
+本页列出当前实现里确实存在的能力，以及明确的缺口，作为读其他章节时的对照基准。
 
 ## 编译流程
 
-`riddlec` 可执行完整前端和基础后端流程：
+`riddlec` 是编译器入口。多个输入文件按换行拼成一个包，各自保留 source map，彼此可以直接引用顶层条目；目录输入不支持。默认把随编译器附带的 std 拼在用户源码之后，`--no-std` 关掉这个行为。
 
-1. 词法分析和语法分析（`IncrementalParser` 提供局部重解析 API）；
-2. AST 包装；
-3. HIR 降级（含 E0040/E0050/E0051/E0052 诊断）；
-4. 作用域图构建和名字解析（基于片段的增量作用域图，支持部分失效）；
-5. 类型检查（含可复用的 `IncrementalTypeChecker`）；
-6. 逃逸分析（过程间不动点，决定局部值用栈分配还是 GC 堆分配）；
-7. move checker（移动后使用、借用冲突、借用期间赋值/移动检查）；
-8. HIR 到 MIR 降级（SSA 形式，Phi 节点，基本块，`Alloca`/`HeapAlloc` 分配指令）；
-9. C 后端代码生成。
+管线按固定顺序执行：
 
-命令行入口支持：
+1. parse：词法与语法分析，`IncrementalParser` 支持按片段局部重解析；
+2. lower HIR：语法树降到 HIR，条目树、属性与文档注释附着在这一步成形；
+3. scope graph：增量作用域图与名字解析，找不到候选时给出 E0050；
+4. type check：`IncrementalTypeChecker`，复用未改动函数体与全局检查的结果；
+5. escape analysis：过程间不动点，标出需要稳定存储的局部值、参数、临时量和匿名函数环境；
+6. move/borrow：移动后使用（E0100）、借用冲突（E0300–E0302）、借用期间的赋值与移动（E0303、E0304）；
+7. MIR lowering：降成 SSA 基本块加 Phi 节点，只在需要后端产物时执行；
+8. C 后端：只在 `--backend c` 时执行，每个包写出一个 `.c` 文件。
 
-```bash
-riddlec [--verbose] [--no-std] [--backend c] [--target <triple>] [--output <file>] <file>...
-```
+`riddlec file.rid` 不带 `--backend` 或 `--emit` 时在第 6 步之后停止。`-v` 把每一步的 ok / failed / skipped 打到 stdout，设置 `RIDDLEC_PHASE_TIMING` 后各阶段耗时打到 stderr。`--emit mir` 把整个程序的 MIR 打印到 stdout，不需要 C 工具链；`--emit c` 与 `--backend c` 走同一条生成路径，写到 `-o` 指定的位置，没给 `-o` 时用第一个输入文件的文件名加 `.c` 后缀。`--target` 接受 7 个 triple：`x86_64-unknown-linux-gnu`、`aarch64-unknown-linux-gnu`、`i686-unknown-linux-gnu`、`x86_64-pc-windows-msvc`、`i686-pc-windows-msvc`、`aarch64-pc-windows-msvc`、`aarch64-apple-darwin`。选中的 triple 同时给出 `usize`/`isize` 的宽度，整数范围检查用的就是它，运行编译器的那台机器的宽度不参与。
 
-`--backend c` 会生成调用 `rgc` ABI 的 C 代码；如需可执行文件，使用本机 `cc`、`gcc` 或 `clang` 同时编译生成结果与发行包附带的 `runtime.c` 和 `args_runtime.c`（C 入口 `main` 会无条件初始化进程参数，因此 `std::env` 的 `args()` / `args_os()` 在任何包中调用都可用）；生成代码的头部注释会给出完整链接命令。`clue build` 会自动完成这一步，不依赖 Boehm GC。多个输入文件会作为一个包合并编译，文件之间可以直接引用彼此的顶层条目。
+诊断只有一种形式：`{severity}[{code}]: {message}`，随后一行 `--> file:line:col` 和源码摘录，最后可有 `= help:` / `= note:`，末尾汇总 `aborting due to N previous error(s)`。没有 JSON 输出或 `--message-format` 选项。退出码：成功 0，编译失败或没有输入文件 1，clap 参数错误 2。
 
-`riddle` 可执行文件提供 `fmt`、`run` 和 `repl` 三个子命令：`riddle fmt` 是源码格式化和 `--check` 检查，LSP 格式化请求与该命令共享实现；`riddle run <file.rid> [-- args] [--seed N]` 编译单个文件并交给内置 MIR 解释器执行，`riddle repl` 用同一解释器启动交互会话，两者都不需要 C 工具链。
+## MIR 与解释器
 
-不指定后端时，`riddlec` 在完成 move/borrow 检查后停止；只有生成后端代码时才继续降级 MIR。
+MIR 位于类型检查与代码生成之间，形式是 SSA 基本块：
 
-`riddlec` 会自动把 `std/lib.rid` 拼到用户源码后面，因此 `std::marker::Copy`、`std::clone::Clone` 和比较、运算 trait 不需要手动定义。
+- 终结符 `Branch`、`CondBranch`、`Return`、`Unreachable`，`Phi` 合并多个前驱块的值；
+- 分配指令 `Alloca`（栈）与 `HeapAlloc`（GC 堆），由逃逸分析结果选择；
+- 内存指令 `Load`、`Store`、`FieldPtr`、`IndexPtr`、`CheckedIndexPtr`、`ExtractValue`、`HeapFree`；
+- 运算指令 `Const`、`BinOp`、`UnOp`、`Cmp`、`Cast`、`SizeOf`；
+- 值构造 `StructValue`、`SparseStructValue`、`ArrayValue`、`TupleValue`，枚举用稀疏初始化让各变体的 payload 槽位稳定；
+- 转换操作码有 `IntToInt`、`IntToChar`、`IntToFloat`、`FloatToInt`、`FloatToFloat`、`BoolToInt`、`IntToBool`、`IntToPtr`、`PtrToPtr`，`Cmp` 支持 `Eq`、`Neq`、`Lt`、`Gt`、`LtEq`、`GtEq`；
+- 可调用值统一为 `{ call, env, drop }`，`FunctionRef` 取函数地址，`CallIndirect` 传入环境后调用；
+- 类型有 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`、`Slice`、`Str`、`Never`、`Void`，裸 `Str` 与 `Slice` 没有独立大小。
 
-### MIR 中间表示
+`crates/interpreter` 是树遍历解释器，输入是完全降级后的 `mir::Module`（已单态化，匿名函数与 trait object 已经变成函数指针结构），服务 `riddle run` 和 `riddle repl`，不需要 C 工具链。两种执行方式的结果一致：
 
-MIR（Mid-level IR）是 SSA 形式的中间表示，位于类型检查和代码生成之间：
+| 行为 | 结果 |
+| --- | --- |
+| 整数算术 | 按位宽回绕 |
+| 除零、`MIN / -1` | 终止，输出 `riddle: division by zero` 一类消息，Windows 退出码 3、其它平台 134 |
+| 移位 | 计数按位宽取模，有符号右移是算术右移 |
+| 浮点转整数 | NaN 转 0，越界钳到 min / max，其余截断 |
+| 数组与切片下标 | 先比较下标与长度，越界输出 `riddle: index out of bounds` |
+| `&str` 相等 | 按内容比较，不是按地址 |
+| panic | `thread 'main' panicked at file:line:col:` 加消息，位置经 source map 映射回 `.rid` 源码 |
 
-- **SSA 基本块**：每个函数体由基本块组成，块以 `Terminator`（`Branch`、`CondBranch`、`Return`、`Unreachable`）结束；
-- **Phi 节点**：`InstKind::Phi` 合并来自多个前驱块的值；
-- **分配指令**：`Alloca`（栈分配）和 `HeapAlloc`（GC 堆分配），由逃逸分析结果驱动；
-- **内存操作**：`Load`、`Store`、`FieldPtr`（字段指针）、`IndexPtr` / `CheckedIndexPtr`（原始指针索引 / 安全数组与切片索引）、`ExtractValue`（提取聚合字段）；
-- **值构造**：`StructValue`、`SparseStructValue`、`ArrayValue`、`TupleValue`；枚举使用稀疏初始化保证不同变体的 payload 槽位稳定；
-- **类型转换**：`IntToInt`、`IntToChar`、`IntToFloat`、`FloatToInt`、`FloatToFloat`、`BoolToInt`、`IntToBool`、`IntToPtr`、`PtrToPtr`；
-- **比较操作**：`Cmp` 支持 `Eq`、`Neq`、`Lt`、`Gt`、`LtEq`、`GtEq`。
-- **函数值**：可调用值统一为 `{ call, env, drop }`，`FunctionRef` 取得隐藏函数或命名函数适配器地址，`CallIndirect` 传入环境后调用；未逃逸的捕获环境使用栈存储，只有越过当前栈帧的环境才提升到 GC 堆。
+解释器覆盖 std 声明的大部分 `extern`：`std::fs` 的文件与目录操作、`time`、`sleep`、随机数、`std::process::exit`、标准输入、`rgc_realloc` / `rgc_free` 等。缺口有两处：过程宏用到的 `riddle_proc_*` 没有 shim，用户自己声明的 `extern "C"` 也没有实现，命中时输出 `riddle: interpreter does not support extern`。
 
-MIR 类型系统包含 `FnPtr`、`Ptr`、`Struct`、`Enum`、`Tuple`、`Array`、`Slice`、`Str`、`Never`、`Void`，并为定长类型提供 `size_bytes()` 布局估算；裸 `Str` 和 `Slice` 没有独立大小。
+解释器的指针是「分配 id + 偏移」，所有分配零初始化（C 侧只清零描述符列出的指针槽）。内存会回收：`alloca` 取用的块随栈帧返回一起释放，`HeapFree`、`rgc_free` 和 `rgc_realloc` 释放程序持有的堆块，释放出去的 id 会被后续分配重新使用，所以分配表不再随运行时长单调增长。字符串字面量和提升后的存储不是栈帧槽位，它们和 C 后端里的 static 数组一样长期有效。读到已释放的指针直接 trapping，报 `dangling pointer to released allocation N`，而不是把过期字节当作有效数据返回。递归深度上限 200000，栈 256 MiB，超限输出 `riddle: stack overflow ...`。`riddle run` 的退出码：读不到源文件 2，编译失败 1，程序正常返回用 `main` 的返回值，栈溢出与内部错误 101。
 
-`riddlec --emit mir` 会打印整个程序的 MIR，便于对照降级结果。
+## 语言特性
 
-### MIR 解释器
+### 词法与语法
 
-`crates/interpreter` 是一个树遍历解释器，直接执行降级完成的 MIR 模块，服务 `riddle run` 与 `riddle repl`：
-
-- **与 C 后端对齐的语义**：整数 wrapping、除零与 `MIN / -1` trap、按宽度掩码的移位、浮点转整数饱和、带边界检查的下标、rustc 风格的 `panic` 渲染、裸指针按地址比较；
-- **原生 shim**：标准库声明的 `extern` 由内置实现提供（`std::fs`、时间、随机数、进程与标准 I/O、`rgc_*` 分配门面），因此不需要 C 工具链；用户自定义的 `extern "C"` 没有实现，调用时报告 `interpreter does not support extern`；
-- **panic 位置**：映射回真实 `.rid` 文件，穿过标准宏展开并覆盖随编译器附带的 std 区域；
-- **REPL**：顶层定义累积、`let` 与表达式行写进自动生成的 `main` 并整体重编译重跑（副作用会重放），表达式回显 `{:?}` 并绑定 `__`，`:help` / `:reset` / `:mir` / `:quit` 为会话命令；
-- **退出码**：镜像编译后的本机可执行文件。
-
-`tests/interpreter`（43 个用例）在不要求 C 编译器的情况下镜像 `tests/mir/std_behavior` 的场景，`benches/interpreter.rs`（`cargo bench`）用固定工作负载盯住执行循环的性能。
-
-### riddle-lsp
-
-仓库包含 `app/riddle-lsp`，一个基于 `tower-lsp` 的 Language Server Protocol 实现：
-
-- 完整的诊断流水线：解析错误、HIR 诊断、类型检查错误、move/escape 分析诊断全部通过 LSP 推送；
-- 增量文本同步（`TextDocumentSyncKind::INCREMENTAL`）；
-- UTF-16 位置编码（正确处理多字节字符如 emoji）；
-- 多工作区管理与索引：发现每个工作区文件夹中的 Clue 项目，在内存中递归索引未打开文件的模块、类型成员、trait 方法、容器和可见性，并维护静态调用边和直接类型关系；文件或 manifest 变化只失效受影响的项目快照；
-- 补全（`textDocument/completion`）：在 Clue 项目中加载模块和本地依赖，优先使用所有已打开文件的未保存内容；候选遵循词法作用域，包含参数、局部变量和模式绑定，并支持字段、实例方法、模块项、枚举变体、关联函数及导入别名；不可见的公开符号可生成独立 `use path;` 编辑完成自动导入，重名声明保留独立路径；
-- 悬停（`textDocument/hover`）：显示函数签名、字段与参数类型、局部表达式的推断类型，以及声明前的文档注释或同行 `//<` 尾随文档；
-- 签名帮助（`textDocument/signatureHelp`）：显示函数或方法签名、声明文档，并跟踪嵌套调用中的当前参数；
-- 声明、定义、类型定义与实现跳转（`textDocument/declaration`、`textDocument/definition`、`textDocument/typeDefinition`、`textDocument/implementation`）：支持局部绑定、模块项、字段、方法及跨文件符号，并把 trait 调用分别映射到 trait 声明和具体 impl；
-- 静态调用层级与类型层级：调用边覆盖编译器能够静态确定的自由函数、命名函数值、固有方法和 trait 方法声明；类型层级连接直接 supertrait、子 trait 及 `impl Trait for Type` 的实现类型；
-- 项目级引用与重命名、文档高亮覆盖未打开模块和非文件 URI；文档符号按当前文档返回，工作区符号会合并已打开文档分析与项目 `ProjectIndex` 中未打开文件的符号；
-- 文档格式化与基于语法块的代码折叠；
-- Inlay Hint 同时提供推断的局部类型和可省略的调用参数名；
-- Code Action 可为可变闭包绑定补 `mut`，也可把不安全操作包入 `unsafe` 块；
-- 语义 Token（`textDocument/semanticTokens/full`），内置类型使用 `keyword`，区分自由函数、方法、struct、enum 和 trait，关联函数使用 `method` / `static`，标准库符号使用 `defaultLibrary`，并包含函数、参数和方法 `declaration` 及可变局部变量 `declaration` / `mutable` 标记；
-- 诊断区分主标签和次要标签（related information），错误码可跳转到错误码手册，注释和修复建议分别以 `note:` / `help:` 附加；
-- Clue 项目按原始文件 URI 发布诊断，包括未打开模块，并在重新分析后清理过期诊断；
-- 诊断严重性层级：Error、Warning、Information、Hint；
-- 文档变更会先合并短时间内的连续输入，再在后台运行诊断并协作式取消过期分析；未变化的文件和无关 Clue 项目直接复用诊断，变化的分析单元复用增量语法树、函数体和全局类型检查缓存，在声明、overlay、磁盘源码或 manifest 变化时保守失效；诊断在 move/borrow 检查后停止，不生成 MIR；UTF-16 位置通过行索引换算，语义 Token 使用包含未保存 overlay 的项目级 HIR，并按文档文本和分析修订缓存；
-- 支持动态注册 `.rid` 与 `Clue.toml` 文件监听，编辑器外部的源码、模块和 manifest 变更会触发项目缓存失效与重新诊断；
-- 仓库内提供 Helix、VS Code、Zed 和 IntelliJ IDEA 2026.1+ 的 `.rid` 文件与 `riddle-lsp` 适配；
-
-工作区中的 Clue 项目会建立内存索引。补全可通过独立的 `use path;` 编辑自动导入可达的公开符号；调用层级只包含编译器能够静态解析的目标，不推测函数指针、闭包或 Trait 的运行时分派。
-
-安装和验证步骤见[编辑器与 LSP](./editor-support.md)。
-
-## 当前语言特性
-
-### 模块和名字解析
-
-- `mod name { ... }` 内联模块；
-- `mod name;` 外部模块声明的语法；
-- `use path;`、`use path as alias;`；
-- `use path::*;`；
-- `use path::{a, b as c};`；
-- `pub` 可见性，模块路径只导出 public 项；
-- `pub use` 重新导出；
-- `self`、`super`、`crate` 和 `::root` 风格路径；
-- 局部变量、参数、模块项、结构体、枚举变体、函数和 impl 方法的解析。
-
-### 变量、函数和表达式
-
-- `let` 绑定，默认不可变；
-- `let mut` 可变绑定；
-- `[x -> x + 1]` 与 `move [x -> x + 1]` 方括号匿名函数、参数推断和闭包捕获；支持参数类型标注、参数解构、零参形式与块体；泛型参数、`where` 子句、返回类型标注与自递归绑定不再属于匿名函数，需要时用具名函数表达（旧的 `fun(x) { ... }` 匿名函数语法已移除，编译器会给出指向方括号形式的诊断）；
-- 参数和返回位置的一般 `impl Trait`，以及带调用签名的 `impl Fn`、`impl FnMut`、`impl FnOnce`；
-- 按用法推断共享、可变和值捕获，精确追踪静态字段和元组元素，并据此检查 `Fn`、`FnMut`、`FnOnce` 调用能力；
-- 每个匿名函数表达式、命名函数项和泛型函数实例具有独立的静态类型；
-- 显式类型标注；
-- 顶层和 `impl` 内的 `const` 声明（`const NAME: Type = value;`），初始化式会做类型、纯表达式和循环检查；
-- 模块和 `impl` 内的有值 `type` 别名，以及 trait 中可省略默认值的关联类型；
-- `let` 支持延迟初始化，首次赋值不要求 `mut`，并检查跨 `if`、`match`、循环的 definite-initialization；未初始化读取报 `E0059`，不可变绑定二次赋值报 `E0031`；
-- 函数定义和函数声明；
-- 泛型函数（类型参数和 const 参数从实参与期望返回类型推断，支持 Rust 风格函数、方法及 `Type::<T>::function::<U>()` 显式参数、`<T: Trait>` bound、`where` 子句，C backend 单态化）；
-- 函数参数、返回类型、尾表达式和 `return`；
-- 块表达式；
-- 结构体字段、元组数字字段（`.0`、`.1` 等）、函数调用和方法调用；
-- 数组字面量、数组重复表达式 `[value; N]`、数组与切片安全索引（越界终止并报告运行时错误）；原始指针索引仍需 `unsafe` 且不做边界检查；
-- 结构体字面量和字段简写；
-- 类型转换表达式 `expr as Type`；支持安全的 `u8 as char` 与 `&str` 到 `&[u8]`，`(*const T, usize)` / `(*mut T, usize)` 到 `&[T]`、`&[u8]` 到 `&str` 的 DST 等布局转换仅允许在 `unsafe` 中使用；
-- `unsafe { ... }` 块表达式，以及原始指针解引用和索引的安全上下文检查；
-- `unsafe fun` 函数和直接调用检查；不安全函数项不会满足安全的 `Fn*` bound；
-- `unsafe extern "C"` 导入块，块内默认不安全并支持 `safe fun` 显式安全声明；
-- 解引用 `*expr`。
-
-### 运算符
-
-- 算术：`+`、`-`、`*`、`/`、`%`；
-- 比较：`==`、`!=`、`<`、`>`、`<=`、`>=`；
-- 逻辑：`&&`、`||`、`!`；
-- 位运算：`&`、`|`、`^`、`<<`、`>>`；
-- 赋值：`=`；
-- 复合赋值：`+=`、`-=`、`*=`、`/=`、`%=`、`&=`、`|=`、`^=`、`<<=`、`>>=`；
-- 一元：`+`、`-`、`&`、`&mut`、`*`、`!`。
-
-C backend 对整数回绕、除零、最小值除以 `-1`、移位计数和浮点转整数使用确定性规则：整数算术按位宽回绕，错误除法终止，移位计数按位宽取模并对有符号右移使用算术语义，`NaN` 转整数为零且溢出值钳制到边界。
-
-### 控制流和模式
-
-- `if` / `else if` / `else` 表达式；
-- `if let 模式 = 表达式 { } else { }`，在 HIR 降级时脱糖为带 `_` 通配臂的 `match`，绑定只在匹配成功的分支内可见；
-- `let 模式 = 表达式 else { ... };`，允许可反驳模式，失败分支必须发散（`E0066`），成功后的绑定进入外层作用域；
-- `while` 循环；
-- `while let 模式 = 表达式 { }`，脱糖为 `loop` 内每次迭代重新求值的 `match`，匹配失败时 `break`；
-- `loop { }` 无限循环表达式，`break 值;` 交出循环结果，所有 `break` 值类型合并为结果类型，无可达 `break` 时类型为 `!`；
-- `for item in iterable` 循环，按 `IntoIterator` / `Iterator` 做类型检查，并在 MIR 中降成 `into_iter` / `next` 调用；循环头接受任意不可反驳模式（元组、结构体、通配符等），可反驳模式报告 `E0057`；当前元素、迭代器和提前退出路径具有独立的析构作用域；
-- 泛型参数可以通过 `IntoIterator<Item = ..., IntoIter = ...>` bound 使用 `for`，具体 impl 在单态化时解析；
-- 标准库 `Range`、固定长度数组 `[T; N]`、共享切片 `&[T]`、可变切片 `&mut [T]` 和 `&str` 可直接用于 `for`，数组按值遍历且不要求元素类型为 `Copy`，字符串迭代产出 Unicode `char`；
-- `match` 表达式，以及枚举、布尔值、`()`、整数、元组和结构体的递归穷尽性检查；
-- 非穷尽整数匹配会报告未覆盖的连续值区间；
-- `match` guard，guard 失败后继续检查后续 arm，且带 guard 的 arm 不计入静态穷尽性；
-- `_` 通配模式；
-- 标识符绑定模式；
-- 字面量模式；
-- 路径模式；
-- 显式 `&pattern` / `&mut pattern`，支持嵌套引用模式且要求可变性精确匹配；
-- 元组模式；
-- 结构体模式；
-- 枚举 unit/tuple/struct 变体模式，payload 绑定会进入 guard 和 arm 表达式；
-- `match` arm 顶层的或模式 `A | B`（也包括第一个备选之前的 `|`）：备选独立检查与降级，穷尽性矩阵按备选展开成多行，备选条件与 guard 在 MIR 中用按位或折叠；绑定变量的备选报 `E0010`，`let 1 | 2 = x` 与 `if let A | B = v` 被拒绝，嵌套备选（`Some(1 | 2)`）由解析器报错；
-- 引用 match ergonomics：结构化模式自动解引用 `&T` / `&mut T`，内部绑定继承共享或可变引用模式；裸绑定保留整个引用，且不提供 `ref` / `ref mut` 语法。默认绑定模式变为引用后，内部不能再写 `mut binding` 或显式引用模式。
+- 关键字 34 个：`let`、`fun`、`struct`、`if`、`else`、`while`、`loop`、`break`、`continue`、`return`、`as`、`self`、`mod`、`use`、`mut`、`move`、`pub`、`super`、`crate`、`enum`、`trait`、`impl`、`dyn`、`match`、`const`、`type`、`extern`、`unsafe`、`safe`、`for`、`in`、`where`、`true`、`false`。`Self` 不是关键字，而是 `impl` 作用域里的类型别名：trait 定义、trait 实现和固有 impl 都能用它写返回类型、参数和类型实参（`fun zero() -> Self`、`Vector<Self>`），只有 `Self { … }` 这种构造写法不认，报 `E0050`；`safe` 只在 `unsafe extern` 块内合法；`static`、`ref`、`async`、`await`、`macro`、`box`、`union` 等不是关键字，会被当作普通标识符。
+- 注释四种：`//`、`///` 与 `//!`、`/* */`、`/** */` 与 `/*! */`。块注释可嵌套。`/**/` 会先被当成块文档注释开头，随后找不到闭合的 `*/`，因此报未闭合块注释；`//<` 只在同一行紧跟节点之后才作为尾随文档注释附着。
+- 整数支持十进制和 `0x`、`0o`、`0b` 前缀、`_` 分隔符与 12 种宽度后缀。浮点是 `1.5`、`1e5`、`1.5f32` 三种形态，`1.` 不是浮点字面量。字符串转义只有 `\n`、`\r`、`\t`、`\0`、`\\`、`\"`、`\'`，没有 `\xHH` 和 `\u{...}`；字符串可以跨行；裸串写成 `r"..."` 或 `r#"..."#`。
+- 属性 `#[...]` 内部是平衡 token 序列，可以放在语句、参数、字段、枚举变体、trait 与 impl 条目、match 臂、表达式、类型和模式之前。只有 `#[lang = "..."]`、`#[fundamental]` 和 `#[derive(...)]` 有语义，`#[inline]`、`#[cfg]` 一类既不报错也不生效；内部属性 `#![...]` 不支持。
 
 ### 类型系统
 
-- 整数：`i8`、`i16`、`i32`、`i64`、`isize`、`u8`、`u16`、`u32`、`u64`、`usize`；
-- 浮点：`f32`、`f64`；
-- `bool`、`char`、`()`、`!`；
-- `str`：不定长字符串类型，仅能作为引用、原始指针或 `impl` 的目标；
-- `&str`：引用 `str` 的定长胖指针值；
-- `[T]`：不定长切片类型，仅能位于引用或原始指针后；
-- `&[T]` / `&mut [T]`：携带元素地址和长度的胖指针，可由对应可变性的数组引用自动转换；
-- 引用：`&T`、`&mut T`；
-- 原始指针类型：`*const T`、`*mut T`；
-- 元组类型和元组表达式，例如 `(2, 3)` 与 `(2,)`；
-- 固定长度数组 `[T; N]`；
-- const generics，例如 `struct Buffer<T, const N: usize> { data: [T; N] }`；
-- 结构体；
-- 结构体的 `mut` 字段（`pub mut hits: i32`）：经共享引用仍可写，`&self` 方法据此维护内部状态，供 `Cell` / `RefCell` 一类内部可变性使用（见「所有权、移动和逃逸」）。枚举的具名变体字段不支持 `mut`，写了会报 `E0014`——变体字段只能经模式到达，而模式绑定是独立局部变量，修饰符无法生效；
-- 枚举；
-- 标准库 `Option<T>` 和 `Result<T, E>`；
-- 独立的匿名函数与命名函数项类型，以及静态 `Fn` / `FnMut` / `FnOnce` bound；
-- 泛型函数、泛型结构体、泛型枚举、泛型 impl；
-- 函数、trait、impl、结构体和枚举的泛型 bound：`<T: Trait>`、`<T: A + B>`、`where T: Trait`；
-- 类型参数实例化；
-- const 参数实例化，例如 `Buffer<i32, 3>`；
-- 无空格嵌套泛型类型参数，例如 `Box<Box<i32>>` 和 `Box<Box<Box<i32>>>`。
-
-### Trait 和 impl
-
-- `trait` 定义；
-- 父 trait 声明、传递 bound、父方法查找、impl 前置依赖和继承环检查；
-- trait 方法签名；
-- trait 默认方法；impl 未覆写时使用默认体，显式覆写优先；
-- 关联类型声明和默认关联类型；
-- `impl Trait for Type`；
-- 用户类型实现 `Fn(参数...) -> 返回类型`、`FnMut` 和 `FnOnce`，并静态调用其 `call` 方法；
-- `impl Type` 固有方法；
-- `self`、`&self`、`&mut self` 接收者；
-- 方法调用 `value.method()`；方法查找失败时会回退为调用存储在字段里的可调用值（`self.f(x)`，`f` 为闭包、函数项或带 `Fn`/`FnMut` bound 的泛型字段），impl 的 callable bound 由闭包签名结构化满足（`Fn` 值可用于 `FnMut`/`FnOnce` 需求）；
-- 关联函数路径调用 `Type::function(...)`；
-- `Type::Assoc` 关联类型路径；
-- trait impl 合约检查：缺少方法、参数类型、返回类型和缺少关联类型会报错；
-- 泛型 trait impl 模式匹配，例如 `impl<T> std::marker::Copy for Box<T>`；
-- `impl` 上的 `where` 子句，并检查 Paterson condition：约束必须严格小于被实现的类型；
-- 算术、取余、位运算、移位、一元负号、逻辑非和复合赋值可通过对应的 `#[lang = "..."]` trait 为用户类型分派；
-- `==` / `!=` 检查 `PartialEq`，有序比较检查 `PartialOrd`；
-- 标准库 `Iterator` / `IntoIterator` 协议，含 `std::ops::{Range, range}`、数组 `IntoIterator` 和 `for` 遍历。
-
-### 属性和标准库内置项
-
-Riddle 支持 Rust 风格外部属性，可放置在多项位置：
+- 标量：`i8`、`i16`、`i32`、`i64`、`isize`、`u8`、`u16`、`u32`、`u64`、`usize`、`f32`、`f64`、`bool`、`char`、`()`、`!`。`i128`、`u128`、`f16`、`f128` 只在词法层存在，类型检查报 E0011。
+- 不定长类型只有 `str`、`[T]` 和 `dyn Trait`，只能出现在引用或裸指针之后；把它们放进绑定、参数、返回值或字段报 E0043。
+- 引用 `&T`、`&mut T`，裸指针 `*const T`、`*mut T`，元组、`[T; N]`、const 泛型参数，`dyn Trait`、`impl Trait`、`impl Fn(..) -> T`。函数类型语法 `fun(T) -> U` 已移除，诊断会指向 `impl Fn`。
+- `Copy` 由 `std::marker::Copy` 标记：标量、`&T`、裸指针与函数项天然满足；`&mut T` 不是 `Copy`；元组和数组按元素结构派生；struct 与 enum 必须显式 `impl Copy` 或 `#[derive(Copy)]`，编译器校验全部字段与变体 payload。
+- 标为 `mut` 的结构体字段提供内部可变性，`&self` 方法可以直接写它。枚举变体字段不能标 `mut`（报 E0014），普通字段经共享引用写入报 E0309。`mut` 字段上的 `&mut` 只限当次调用内使用：可以当接收者或实参（`add_to(&mut counter.hits)`），不能绑定到名字、不能返回、不能存进别的聚合体。
 
 ```riddle
-#[item]
-struct Item {
-    #[field]
-    value: i32,
+struct Counter {
+    pub mut hits: i32,
 }
 
-fun id(#[param] value: #[ty] i32) -> i32 {
-    #[expr] value
+impl Counter {
+    fun bump(&self) {
+        self.hits += 1;
+    }
 }
 
-match value {
-    #[arm] Pattern => result,
+fun main() {
+    let counter = Counter { hits: 0 };
+    counter.bump();
+    println!("{}", counter.hits);
 }
 ```
 
-属性当前会进入 AST/HIR。编译器识别 `#[lang = "..."]`，用于把 trait 标记为编译器内置项。默认加载标准库时，该属性仅允许随编译器附加的标准库使用，用户包中出现会触发 E0049；使用 `--no-std` 时，参与编译的包可以为自定义 core 定义 lang item，编译器仍会检查名称、目标、固定签名和重复注册。
+- 布局检查查找内联包含自己的字段并报 E0072。打断递归环的方式是 `&T`、裸指针、`dyn Trait`、`[T; 0]` 或内部用裸指针的 `Vector<T>`；`[T; N]`（N 非 0）和 `[T]` 不打断。查找按裸名在整个 item tree 里进行，限定路径写法的递归字段可能漏检。
+- 关联类型已实现：trait 内声明（可以带默认值）、impl 提供、`dyn Trait<Assoc = T>` 绑定，缺必需关联类型报 E0027；trait 里没有关联 const。
 
-Clue 支持 `#[proc_macro_derive(Name, attributes(...))]`、`#[proc_macro_attribute]` 和 `#[proc_macro]` 导出的 Riddle 过程宏。过程宏包由 `[lib] proc-macro = true` 标记并为宿主平台构建，也可以依赖并使用另一个过程宏包。宏可通过分组、别名、通配符或 `pub use` 导入独立的宏命名空间，混合 `use` 会保留普通名称；derive 只允许放在结构体或枚举上，Riddle 当前没有 union 条目。函数式宏使用 `name!()` 语法，可出现在表达式、条目、类型和模式位置。宏函数接收由 `Group`、`Ident`、`Punct` 和 `Literal` 组成的递归 `TokenStream`；输入、输出、诊断和 span 通过带版本的长度前缀结构化协议传递，输出 token 直接进入解析器。复制到输出的 token 会保留源位置，生成代码中的宏会继续展开，最大深度为 32。过程宏包内置 `syn` 和 `quote!`：`syn` 提供结构化 `DeriveInput`、Riddle 语法分类、`Parse`、`ToTokens`、`Visit` 与 `Fold`，`quote!` 支持插值、重复和等长向量配对。LSP 同步支持宏高亮、悬停、定义、引用、别名重命名和补全。
+### 条目、模块与可见性
 
-当前标准库会自动拼到用户源码后面，根部通过 prelude 重导出常用项，同时按 Rust 风格分模块定义：
+- 条目有 `fun`、`unsafe fun`、`struct`、`enum`、`trait`、`impl`、`mod`、`use`、`const`、`type`、`extern`，路径式宏调用也可以写在条目位置。它们可以出现在顶层，也可以出现在函数体里；条目后不能带分号。`pub` 允许出现在 `fun`、`unsafe fun`、`unsafe extern`、`struct`、`mod`、`use`、`enum`、`trait`、`const`、`type` 之前，不能写在 `impl` 前；struct 字段、trait 条目和 impl 条目可以写 `pub`。
+- `mod name { ... }` 内联模块与 `mod name;` 外部模块都在。`use` 支持 `as` 别名、`::*`、`::{a, b as c}`（可嵌套，允许尾逗号）、前导 `::` 和 `self`、`super`、`crate` 段；`pub use` 重导出。
+- 可见性检查：私有字段与私有方法在定义模块之外访问报 E0054。固有方法和字段要求同 package 且定义模块包含使用模块，trait impl 的方法不按 `pub` 过滤。同一作用域的顶层重名报 E0064，空 `use` 报 E0051，glob 目标找不到报 E0052。
+- `const NAME: Ty = value;` 可以写在模块和 impl 里。初始化式必须是常量表达式：字面量、对其它 `const` 的路径引用、没有语句的块、聚合字面量、一元与二元运算、字段访问、`as`、`?` 和下标可以；函数调用、匿名函数和控制流报 E0060，初始化成环同样报 E0060。常量可以当数组长度和 const 泛型实参。求值器按有符号 `i128` 建模，`const N: i32 = -1;`、`'x'`、`true` 都能折叠，结果按申明类型截断后再查范围，超出范围报 E0011。数组长度和 const 泛型实参仍然要求非负整数。
+- `type` 别名在模块和 impl 里必须写成 `type Name = Ty;`，trait 里可以只声明；别名不支持泛型参数，别名环报 E0391。
 
-prelude 只直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`、`Ok`、`Err`、`Copy`、`Clone`、`Drop`、`drop`、`Default`、`Into`、比较 trait 和迭代协议。集合、格式化 trait、具体迭代器、区间、解析、时间及底层输出函数需要从各自模块显式导入；标准宏命名空间隐式提供 `Debug`、`Clone`、`Copy`、`Default`、`Hash`、`PartialEq`、`Eq`、`PartialOrd`、`Ord` 派生，格式化与输出宏，以及 `assert!` / `assert_eq!` / `assert_ne!`、对应的 `debug_assert*` 宏、`todo!`、`unimplemented!` 和 `unreachable!`。
+### 表达式与控制流
 
-- `std::option::Option<T>`，提供 `is_some`、`is_none`、`unwrap`、`expect`、`unwrap_or`、`unwrap_or_else`、`map`、`map_or`、`and_then`、`and`、`or` 和 `or_else`；
-- `std::result::Result<T, E>`，提供 `is_ok`、`is_err`、`unwrap`、`expect`、`unwrap_or`、`unwrap_or_else`、`map`、`map_or`、`map_err`、`and_then`、`and`、`ok` 和 `err`；
-- `std::ffi::OsString` 无损保存平台字符串；`std::env::args_os()` 在 Unix 保存原始参数字节，在 Windows 解析 `GetCommandLineW` 并以 WTF-8 保存 UTF-16，`std::env::args()` 则严格转换为 `String`，遇到非 Unicode 参数时 panic；
-- `print!` / `println!` 通过隐藏的标准库输出入口和 `std::fmt::{Debug, Display, Formatter, Result}` 支持字符串、布尔、字符、整数和浮点标量；格式化 trait 不在 prelude 中，底层输出入口不属于用户 API。`Debug` 与 `Display` 都使用 `fmt(&self, formatter: &mut Formatter) -> Result`，字符串和字符的 `Debug` 输出会添加引号并转义；标准派生支持结构体、泛型结构体以及 unit、tuple、named 三类枚举变体，当前包括 `Debug`、`Clone`、`Copy`、`Default`、`Hash`、`PartialEq`、`Eq`、`PartialOrd` 和 `Ord`，并为泛型参数生成相应 bound；枚举 `Default` 要求恰好一个带 `#[default]` 的 unit 变体，排序派生按变体声明顺序和 payload 字典序工作；`Copy` impl 会验证所有字段和 payload，比较派生仍需满足父 trait；`Option`、`Result`、`String`、`Vector`、`HashMap`、`HashSet`、`TreeMap` 和 `TreeSet` 均通过 `Debug` 派生实现格式化；`print!` / `println!` 支持空调用，`format!` 要求字符串字面量并返回 `String`，`panic!()` 使用 `explicit panic`，`panic!(...)` 在终止前格式化消息；四个宏都支持字符串字面量、`{}` / `{:?}` / `{0}` 位置参数 / `{name}` 命名捕获、尾随逗号以及 `{{` / `}}`，并在编译期校验格式串；`{}` 按从左到右的顺序消费参数，`{0}` 可重复引用任意参数，`{name}` 隐式捕获调用处的同名局部变量；说明符仅支持空说明符和 `:?`，宽度、对齐等其他说明符、越界的位置索引与实参数量不足都会在编译期报错；
-- `assert!`、`assert_eq!`、`assert_ne!` 及对应的 `debug_assert*` 宏复用 `panic!`；比较断言只求值两侧一次并显示 `Debug` 值，自定义消息仅在失败路径求值。`todo!`、`unimplemented!` 和 `unreachable!` 返回 `!` 并保留调用位置；当前所有构建都会执行 debug assertion；
-- `vec!` 宏支持三种形式：`vec![a, b, c]` 构造 `Vector` 并逐个 `push`（元素按值移动，支持尾随逗号与嵌套 `vec!`），`vec![elem; count]` 展开为 `Vector::from_elem(elem, count)`（要求元素实现 `Clone`，为每个槽位克隆），空 `vec![]` 展开为 `Vector::new()` 块并由上下文推断元素类型（无法推断时报告类型错误）；`Vector::from_elem` 是公开的标准库 API；
-- `std::string::String` 提供 `new`、`from_str`、`as_str`、`len`、`capacity`、`is_empty`、`push_str`、`push_char`、`clear`、`split`、`replace`、`to_ascii_uppercase` 和 `to_ascii_lowercase`（`split` 返回 `Vector<String>`，空分隔符行为与 `find` 一致）；同一模块按 Rust 风格为 `str` 提供 `len`、`is_empty`、`as_bytes`、`contains`、`find`、`starts_with`、`ends_with`、`slice`、`trim`、`split`、`replace`、`to_ascii_uppercase`、`to_ascii_lowercase` 和按 Unicode `char` 遍历的 `StrIter`；
-- `std::vector::Vector<T>` 提供 `new`、`len`、`capacity`、`is_empty`、`push`、`pop`、`insert`、`remove`、`get`、`get_mut`、`swap`、`sort`（要求 `T: PartialOrd`，插入排序）、`contains`（要求 `T: PartialEq`）、`retain`、`clear`、`as_slice`、读写下标和按值迭代； `Vector<T>` 另提供 `from_iterator`（把任意迭代器收集为向量）和 `from_elem(value, count)`（要求 `T: Clone`，`vec![value; count]` 的底层实现）；下标越界调用 `panic`，缓冲区通过运行时 `rgc_realloc`、`rgc_free` 管理；
-- `Vector<T>` 对零大小元素分配至少一个槽位并检查容量乘法溢出；同点原始指针支持 `==` / `!=` 按地址比较，`p == 0usize as *const T` 可用于空指针检查；
-- `std::iter::{Iterator, IntoIterator}`；`Iterator` 提供默认方法 `count`、`nth`、`fold`、`for_each`、`all`、`any`、`find`、`position`，以及惰性的 `map` / `filter` / `chain` / `take_while` / `skip_while` / `inspect`（通过闭包字段适配器实现，可链式组合并支持 `for` 遍历）；`std::iter` 另提供急切求值的 `map_into` / `filter_into`（返回 `Vector`）与适配器构造函数 `enumerate` / `take` / `zip` / `skip`，以及 `min` / `max`（返回 `Option<Item>`，要求 `Item: PartialOrd`）；`Iterator::collect` 可把任意迭代器收集为 `Vector<Self::Item>`，`Vector::from_iterator` 与之等价；`DoubleEndedIterator` 提供 `next_back`，切片迭代器 `SliceIter` 支持从尾部遍历；
-- `std::slice::{SliceIter, SliceIterMut}`，并为 `[T]` 提供长度、边界检查访问、原始指针访问和借用迭代；
-- `std::array` 中的按值、共享借用和可变借用数组迭代器；
-- `std::ops::{Range<T>, RangeInclusive<T>, range(start, end)}` 支持整型 Step；范围表达式 `a..b` 脱糖为 `range(a, b)`，`a..=b` 脱糖为 `range_inclusive(a, b)`；
-- `std::marker::Copy`；
-- `std::clone::Clone`；
-- `std::cmp::{Ordering, PartialEq, Eq, PartialOrd, Ord}`；`Ordering` 自身也实现 `PartialEq` / `Eq` / `PartialOrd` / `Ord`（按变体声明顺序：`Less < Equal < Greater`），所以 `x.cmp(&y) == Ordering::Equal` 与 `Vector<Ordering>::sort` 都可用；
-- `std::ops` 下的算术、位运算、移位、复合赋值以及 `Index` / `IndexMut` trait，均有可调用的必需方法；这些 trait 由对应 `#[lang = "..."]` 标记，用户类型的下标操作静态分派到 `index` / `index_mut`。
-- `std::default::Default` 为标量、`Option<T>`、`String` 和 `Vector<T>` 提供默认值；`Default::default()` 支持按期望类型静态选择 impl；
-- `std::convert::Into<T>` 是 `?` 错误传播使用的错误转换协议；`std::convert::From<T>` 已提供，`?` 在没有 `Into` impl 时回退查找 `From` impl（Rust 风格错误链路），且 `?` 同样支持 `Option<T>` 操作数（在返回 `Option` 的函数中把 `None` 提前返回）；
-- `std::hash::Hash` 通过共享借用为标量提供确定性的 `usize` 哈希值；浮点 impl 按位模式经 `fmix64`（MurmurHash3 finalizer）混合后哈希（而非数值截断），不同的浮点值不会因小数部分被截断而共享哈希；`Hash`、`PartialEq` / `Eq`、`PartialOrd` / `Ord`、`Display` / `Debug` 为 2–6 元元组提供 impl（逐元素递归到元素自身的 impl，元组按字典序比较）；
-- `std::collections::{TreeMap, TreeSet}` 使用红黑树，键要求实现 `Ord`；`std::collections::{HashMap, HashSet}` 使用开放寻址哈希表、线性探测和负载扩容，键要求实现 `Hash + Eq`；四类集合都提供 `remove`：HashMap 采用线性探测的后移删除（backward-shift deletion），TreeMap 采用带删除修复（delete fixup）的 CLRS 红黑树删除并压缩 arena 槽位；对应实现模块位于 `std::collections::{tree_map, tree_set, hash_map, hash_set}`；`HashMap::get_or_insert(key, default)` 返回已有值或插入默认值后的可变引用；
-- `std::parse` 提供返回 `Result<T, ParseIntError>` 的 `parse_i32` / `parse_i64` / `parse_u64` / `parse_usize` 与 `parse_with_radix`（2–36 进制及分类错误）；`std::time::time_now` 转发到 C `time`，`Duration::from_secs` / `from_millis` 与 `sleep` 转发到 `riddle_sleep_ms`；
-- `std::fs::FsFile` 通过运行时提供的 `riddle_fs_*` 薄包装（避免与 `<stdio.h>` 原型冲突）访问 C `stdio`：`open` / `create` / `append` / `read` / `write` / `flush` / `read_to_string`，`Drop` 保证关闭句柄；`std::fs::{read_to_string, write}` 提供整文件便捷读写；`std::fs::{exists, metadata, read_dir}` 提供存在性检查、`FileMetadata { size, is_file, is_dir }` 元数据查询和目录条目枚举（`read_dir` 返回 `Vector<String>`，跨平台由 Win32 `FindFirstFile` / POSIX `dirent` 支撑）；`std::fs::{remove, rename, copy}` 提供删除、重命名与复制；`?` 可直接在这些 `Result<FsError>` API 间传播；
-- `std::io` 提供 `eprint` / `eprintln`（标准错误输出）与按行读取：`read_line(buffer)` 读取标准输入，`BufReader::read_line` 读取文件；两者把整行按 UTF-8 校验解码后再替换缓冲区，非法字节序列返回 `ReadError::InvalidUtf8` 并保持缓冲区为空，未读到任何字节返回 `ReadError::EndOfFile`；
-- `std::char` 为 `char` 提供 ASCII 判断与大小写转换、`to_digit` / `from_digit` 与空白判断（仅覆盖 ASCII）；
-- `std::process::exit(code)` 终止进程；
-- `std::mem::{swap, take}` 提供按引用交换与取值换默认值；
-- `std::random` 提供 `random_u32` / `random_u64` / `random_bool` / `random_below`，由 `riddle_random_u32` / `riddle_random_u64` 运行时垫片支撑（Windows 使用 `GetTickCount` 种子的 xorshift，POSIX 读取 `/dev/urandom`）；
+- 字面量、运算、调用、`if`、`match`、块、`loop`、`unsafe { }` 都是表达式并且有值，块的尾表达式就是块的值。块状表达式在语句位置可以不带分号，其它表达式必须写。
+- 运算符全集：算术 `+ - * / %`，比较 `== != < > <= >=`，逻辑 `&& || !`，位运算 `& | ^ << >>`，前缀 `&`（借用）、`&mut`、`*`（解引用）与 `as`、`?`，赋值 `=` 与 `+= -= *= /= %= &= |= ^= <<= >>=`。除赋值右结合外，所有二元运算符左结合，区间也是左结合：`a..b..c` 解析成 `(a..b)..c`。
+- 控制流有 `if` / `else`、`if let`、`while`、`while let`、`loop`、`for ... in ...`、`break`（带值只允许在 `loop` 内，否则 E0065）、`continue`、`return`。`while`、`for` 与无 `else` 的 `if` 的值是 `()`。
+- `let` 支持延迟初始化和 `let ... else`；`let` 与 `for` 头部的模式必须不可反驳，否则 E0057。`if let` 之后的绑定在成功分支内可见，`let ... else` 成功后的绑定进入外层作用域。
+- `match` 支持 guard、or-pattern 和递归穷尽性检查，非穷尽报 E0039，整数 scrutinee 还会给出未覆盖的区间。
+- `?` 接受 `Result<T, E>` 和 `Option<T>`：错误分支经 `Into` 转换后返回（没有 impl 时回退 `From`），`Option` 操作数把 `None` 提前返回。
+- 匿名函数用方括号：`[x -> x * 2]`、`[ -> 1]`、`move [x -> x]`，参数可以带类型和模式。后缀位置 `values.map [v -> v * 2]` 把方括号形式当实参调用 `values.map`。方括号语法里没有写泛型参数和返回类型的位置，自递归要用具名函数。`fun(x) { ... }` 与 `|x| x` 两种写法都不存在。
+- 宏只有路径式调用 `path!(...)`、`path![...]`、`path!{...}`，参数内容是平衡 token 序列。内置函数式宏 15 个：`assert`、`assert_eq`、`assert_ne`、`debug_assert`、`debug_assert_eq`、`debug_assert_ne`、`format`、`panic`、`print`、`println`、`quote`、`todo`、`unimplemented`、`unreachable`、`vec`。内置 derive 9 个：`Debug`、`Clone`、`Copy`、`Default`、`Hash`、`PartialEq`、`Eq`、`PartialOrd`、`Ord`。格式串只接受字符串字面量，占位符是 `{}`、`{0}`、`{name}`，各自可选 `:?`，没有宽度、精度和对齐。
+- 模式种类：`_`、绑定（含 `mut`）、字面量、元组、`&` 与 `&mut`、结构体、枚举的 unit / tuple / struct 变体、路径、or-pattern（只在 match 臂顶层）。没有 `-1` 这类负数字面量、`ref` / `ref mut`、`@` 绑定、切片模式 `[a, b]`、区间模式 `1..=5`、嵌套 or-pattern `Some(1 | 2)`。引用 match ergonomics 会自动解引用 `&T` / `&mut T`，默认绑定模式变成引用后再写 `mut` 或 `&mut` 报 E0010。
 
-`Default`、`Hash`、标量格式化和基础集合/解析/时间 API 已经具备可执行行为；整数解析会拒绝空串、非法字符和超出目标范围的输入。
+### Trait 与泛型
 
-当前影响编译器语义的 lang trait 包括：
+- trait 条目只能是 `fun`、`unsafe fun` 和 `type`；方法可以有默认体，impl 未覆写时使用默认体。
+- 支持 supertrait、传递 bound、父方法与环检查（E0044），以及「impl 某 trait 必须 impl 其 supertrait」（E0036）。
+- impl 契约检查：缺必需方法 E0026，缺必需关联类型 E0027，`unsafe` 一致性、参数个数、泛型个数不符报 E0028，参数类型不符 E0029，返回类型不符 E0030。
+- 一致性检查：重叠 impl 报 E0047，孤儿规则报 E0048，违反 Paterson 条件报 E0037。
+- `#[lang = "..."]` 把 trait 标为编译器内置项，驱动运算符与下标分派：`copy`、`drop`、`clone`、`partial_eq`、`eq`、`partial_ord`、`ord`、`debug`，算术与位运算的 `add`、`sub`、`mul`、`div`、`rem`、`neg`、`not`、`bitand`、`bitor`、`bitxor`、`shl`、`shr`，对应的复合赋值 `add_assign` 到 `shr_assign`，以及 `index`、`index_mut`。`option` 和 `result` 是枚举 lang 标记。加载 std 时用户包写内部属性报 E0049；`--no-std` 下可以为自定义 core 定义 lang item。加载 std 时用户包写内部属性报 E0049；`--no-std` 下可以为自定义 core 定义 lang item。
+- 泛型支持类型参数与 const 参数（`<T, const N: usize>`）、`<T: A + B>`、`where` 子句。默认类型实参只允许出现在 struct、enum、trait 声明里，函数与 impl 不允许。泛型经单态化实现，泛型递归调用让类型实参不断增长时报 E0033。
+- `dyn Trait` 支持关联类型绑定与父 trait 向上转型；`dyn A + B` 和 `impl A + B` 都不支持，多 bound 只能出现在 bound 位置。
 
-- `#[lang = "copy"]`：被它标记的 `Copy` trait 会被 move checker 用来决定用户类型是否按复制语义处理；
-- `#[lang = "drop"]`：被它标记的 `Drop` trait 提供确定性析构；`Drop + Copy`、直接调用析构方法和从显式 `Drop` 类型移出字段会被拒绝；
-- `#[lang = "add"]` 到 `#[lang = "shr"]`：用户类型的算术、位运算和移位会分派到对应 trait 方法；标量 impl 的方法调用直接降为 MIR 运算；
-- `#[lang = "neg"]` 和 `#[lang = "not"]`：用户类型的一元负号和逻辑非会分派到对应 trait 方法；标量 impl 的方法调用直接降为 MIR 运算；
-- `#[lang = "add_assign"]` 到 `#[lang = "shr_assign"]`：用户类型的复合赋值会分派到对应 trait 方法；标量 impl 的方法调用直接降为 MIR 的读取、运算和写回；
-- `#[lang = "index"]` 和 `#[lang = "index_mut"]`：非内建下标读取和可变位置分别静态分派到 `Index::index` 与 `IndexMut::index_mut`；数组、切片和裸指针保留原有直接索引路径；
-- `#[lang = "partial_eq"]`：用户类型的 `==` / `!=` 分派到 `PartialEq::eq` / `ne`；
-- `#[lang = "partial_ord"]`：用户类型的 `<`、`>`、`<=`、`>=` 分派到 `PartialOrd::lt`、`gt`、`le`、`ge`。
+### 所有权、借用与逃逸
 
-`Clone::clone`、`PartialEq::eq`、`PartialOrd::partial_cmp`、`Ord::cmp` 和各运算 trait 方法可以直接调用。带受支持 lang 标记的标量运算方法不会生成 `add__i64` 一类 C 包装函数，而是生成原生 C 运算表达式。未标记的同名 trait 仍按普通方法编译；用户类型的运算符会调用对应 trait impl 或默认方法。
+- 值默认移动，`Copy` 类型按复制传入，移动后使用报 E0100。
+- 借用冲突有三档：要可变借用而存在共享借用 E0300，要共享借用而存在可变借用 E0301，同一位置同时两个可变借用 E0302。借用存活期间的赋值与移动分别报 E0303、E0304。
+- 借用到绑定的最后一次使用为止（NLL 式近似，不是按 CFG 的活跃变量分析）。
+- 通过共享引用写入报 E0309，例外是 `mut` 字段。检查按被调函数的内部写摘要工作；遇到 `dyn` 分派、函数指针调用、泛型 bound 分派和没有函数体的 `extern` 声明时，退化为「该实参的全部 `mut` 字段」这一保守结果。
+- `Drop` 类型：不能移出字段（E0305），借用不能比拥有者活得久（E0306），`match` guard 里不能移动被守护的位置（E0307），不能从非 `Copy` 值的解引用移出（E0308），`Drop + Copy` 报 E0055，直接调用 `Drop::drop` 报 E0056。
+- 逃逸分析决定局部值放栈还是 GC 堆。默认开启 GC，会逃出栈帧的引用被提升到堆，移动与借用检查不受影响。`Clue.toml` 里写 `[runtime] gc = false` 后语义不同：同样的引用逃逸变成编译错误 E0310，程序必须自己保证不返回、也不保存指向栈值的引用。
 
-二元、复合赋值和比较 trait 支持 `Rhs = Self` 默认类型参数以及异构右操作数 impl；泛型约束中的运算符调用在单态化后静态选择具体 impl。赋值求值顺序与 Rust 一致：普通赋值和内建复合赋值先右后左，重载复合赋值先左后右。
+```riddle
+fun make_value() -> &i32 {
+    let value = 7;
+    &value
+}
 
-### 所有权、移动和逃逸
+fun main() {
+    println!("{}", *make_value());
+}
+```
 
-- 值默认移动；
-- `?` 接受 `Result<T, E>` 和 `Option<T>`：成功分支继续当前函数；错误分支通过 `Into`（无 `Into` impl 时回退 `From`）转换后返回外层 `Result`，`Option` 操作数则在返回 `Option` 的函数中把 `None` 提前返回；
-- 标量、共享引用、原始指针和命名函数项等内置 Copy 候选默认可复制；`&mut T` 与闭包值不可复制；
-- `Option<T>` 和 `Result<T, E>` 仅在所有 payload 类型实现 `Copy` 时实现 `Copy`；
-- 用户类型可以通过实现 `std::marker::Copy` 进入复制语义；编译器会验证结构体字段和所有枚举 payload，并在泛型场景中使用 impl bound；
-- move checker 检查移动后使用；
-- 借用期间移动会报错；
-- 共享引用不允许写入它指向的值（`E0309`）：字段访问和下标会隐式解引用引用，所以 `r.n = 5`（`r: &T`）、`(*r).n = 5` 与 `*r = value` 都被拒绝；`&self` 方法里给字段赋值、或对字段调用需要 `&mut self` 的方法同样被拒绝。经由裸指针（`unsafe`）写入不受此检查约束；
-- 声明为 `mut` 的结构体字段（`pub mut hits: i32`）在共享引用下仍可写：`&self` 方法可以 `self.hits += 1`，也可以对字段调用 `&mut self` 方法（`self.log.push(item)`）。可写性是字段自身的属性，路径上任意一层命中 `mut` 字段即可写；非 `mut` 字段照常报 `E0309`。`mut` 字段上的 `&mut` 被限制在**它所在的那次调用**内——可以作为调用的接收者或实参（`add_to(&mut counter.hits)`），不能绑定到名字、不能返回、不能存进其它聚合体，否则报 `E0309`。调用会按被调函数记录的内部写摘要检查它可能写入的 `mut` 字段：指向字段**内部**的借用仍存活时调用被拒绝（`E0300`），借整个值或借字段本身不受影响（见「当前限制」中摘要的退化条件）；
-- 分支是否可达会影响移动检查的合并：必然发散（`return` / `break` / `continue` / `!` 类型表达式，或所有分支都发散的 `if`、`match`）的分支不把它内部的移动带进 `if` 之后的合并点；
-- 把引用转换成裸指针（`r as *const T`、`&mut r as *mut T` 等）只读取指针值，不消耗该引用；把引用绑定到新名字（`let q = r;`）仍然是移动；
-- 方法和函数返回值会传播引用来源，包含 `Option<&T>` 等泛型包装；元组和数组的来源按元素保留，模式解构不会让无关元素互相延长借用；
-- 具体 impl 的调用按过程间引用来源摘要实例化返回值：摘要里的借用带字段/下标路径（`&self.values[i]` 记为"接收者的 `values` 字段"），结构体字面量保留按字段的来源，`(ptr, len) as &[T]` 这类转换保留来源但清掉槽位结构。当接收者自身存有引用字段时（数组/切片迭代器的 `values: &[T]`），返回的元素引用挂到该字段存的 loan 上——调用自身的 `&mut self` 接收者借用随即到期，因此手动连续调用 `next` 合法，而元素引用存续期间修改底层数据仍会被拒绝；接收者没有可投影的存储来源时（自有数据的 `&self.value`），返回值沿用调用自身的接收者借用，与既有语义一致。
-- 摘要 origin 的路径会对照 impl 的 self 类型行走：穿过引用（或 `*mut T` 字段）前缀的步骤标记为"区域在接收者存储之外"，由此映射的 loan 永不与接收者自身存储的借用冲突（单侧标记即跳过），双侧都标记的照常检查。经原始指针（`unsafe` 豁免通道）取出的引用摘要不透明，按全部引用输入保守合并；借用空数组字面量（`&[]`）不别名任何数据，不置 opaque。
-- 泛型 bound 分发的 trait 调用使用"全 impl 摘要 join"；带 `#[flow = "behind_reference"]` 契约的 trait 方法在 join 之外还允许适配器摘要继承内层调用的来源（值形被调——闭包/可调用参数——的结果只可能来自其捕获与实参，不置 opaque）。契约在定点后逐 impl 验证：任何实现借用了自身存储即整体降级，回退保守合并；从未使用过的绑定以其绑定位置为最后使用（NLL 式），持有的 loan 随即过期；
-- 经引用写入（`*m = v`、`m.field = v`，其中 `m: &mut _`）按被指向的位置检查冲突：派生共享借用存续期间（包括借用被闭包持有的情况）写入会报 `E0300`，最后一次派生使用之后的写入不受影响；引用自身所在 loan 家族（含引用参数自带的种子借用）不计入冲突，与 `&mut self` 方法调用路径的既有语义一致；
-- 引用参数支持自动重借用，局部借用可在最后一次使用后结束；
-- 模式生成的字段重借用按投影分别追踪；子借用存活时冻结父可变引用，显式引用模式复制 `Copy` 内容而不移动引用；
-- 字段访问本身不会移动整个结构体；
-- 数组元素和结构体字段按值移动；
-- `match` 解构按字段记录部分移动，未移动的兄弟字段仍可继续使用；
-- 引用逃逸分析通过过程间的“外泄参数 / 返回来源参数”摘要，决定局部值使用栈分配还是 GC 堆分配。
-- 共享/可变闭包捕获会让对应局部获得稳定地址；静态字段和元组元素按投影独立捕获，动态索引与解引用在无法继续静态细分的位置停止；闭包未逃逸时使用栈存储，闭包越过当前栈帧时才提升到 GC 堆，且分配位置不会放宽移动和借用检查；
-- `move [...]` 按值捕获所有使用到的外部位置；`Copy` 值仍复制，按值捕获本身不会强制闭包成为 `FnOnce`；
-- 非 `Copy` 值捕获会在创建闭包时移动该值，`FnOnce` 闭包调用后不可再次使用。
-- 需要析构的局部、参数、模式绑定、迭代元素、聚合字段和闭包值使用 drop flag 防止移动后的重复析构；逃逸到 GC 堆只改变地址，仍在所有者结束时确定性运行 `Drop`。
-- GC 运行时（`runtime.c`）对栈和寄存器执行保守式扫描，从 `rgc_init` 记录的栈底开始向上标记；堆对象记录在动态注册表中，精确指针查找走地址哈希表，内部指针标记按每次回收重建的地址有序索引二分查找，清扫只访问已注册槽位，回收阈值随存活集合增长（`next = max(1 MiB, live * 2)`）。载荷标记按编译器发布的布局描述符进行：`rgc_alloc` 的第二个参数是扁平的 `uint32_t` 数组（槽数量加各指针槽的字节偏移），只标记这些槽并跳过其余字节，声明槽在分配时清零，描述符在注册时校验、不合格即降级；传 `NULL`（标准库共享的无类型字节存储，以及无法忠实描述的布局）退回逐字保守扫描。1 KiB 以内的分配按 16 字节尺寸类从 64 KiB chunk 切分复用，更大的分配直接走 `malloc`。统计计数通过 `rgc_stat_*` 访问器读取，`RGC_DEBUG_STATS=1` 会在每次回收时向 stderr 打印一行（含精确与保守的对象数和载荷扫描数）。标记期间活引用仍需位于可扫描内存中，未逃逸值（栈上）不参与堆回收；自定义 runtime 必须接受描述符参数，可以忽略它从而保持保守语义。
+### 标准库
 
-### 字符串和 FFI
+- 随编译器附带的 std 自动拼在用户源码之后，prelude 直接提供 `Option`、`Result`、`String`、`Vector`、`Some`、`None`、`Ok`、`Err`、`Copy`、`Clone`、`Drop`、`drop`、`Default`、`Into` 和迭代协议，其余从各自模块导入。
+- 模块覆盖 `option`、`result`、`string`、`vector`、`iter`、`slice`、`array`、`ops`、`cmp`、`marker`、`clone`、`default`、`convert`、`hash`、`collections`（`Vector`、`HashMap`、`HashSet`、`TreeMap`、`TreeSet`）、`fs`、`io`、`env`、`process`、`mem`、`time`、`random`、`parse`、`char`、`fmt`、`ffi`。
+- 没有 `Box`、`Rc`、`Arc`、`Weak`、`Cell`、`RefCell`，也没有 `sync`、`rc`、`thread` 模块。
+- 各模块的公开 API 见[常用标准库](./standard-library.md)。
 
-- `str` 是不定长类型，不能作为局部变量、参数、返回值或普通字段；
-- `&str` 是 `{ ptr, len }` 胖指针，字符串字面量的类型也是 `&str`；
-- 字符串字面量支持 `"..."`、`r"..."`、`r#"..."#` 和 `r###"..."###`；
-- `extern "C"` 支持声明块和带函数体的导出定义；
-- C 导入中的 `&str` 映射为 `const char*`，调用点会复制并补齐 NUL，临时指针只在调用期间有效且输入不能含嵌入 NUL；显式 `#[c_export]` 包装函数也使用该参数 ABI，边界另一侧必须提供 NUL 终止的数据；需要保留长度时应显式传递指针和 `usize`；带函数体的既有 `extern "C"` 定义和普通 Riddle 函数仍使用 `{ ptr, len }`；
-- C backend 只会在实际调用 C 字符串导入时生成内部的 NUL 终止桥接 helper；除此之外不按函数名提供内置 C helper，所有 `extern "C"` 声明都按普通外部符号生成；
-- 标准库通过 `as_bytes().len()` 实现 `str::len`，并用受限的同布局转换实现 `&str` / `&[u8]` 转换；`String::as_str` 先借用 `Vector<u8>` 为 `&[u8]`，再通过普通标准库 unsafe 函数转换为 `&str`，不使用函数 builtin，也不生成或链接 C helper；
-- `String` 以 `Vector<u8>` 持有 UTF-8 字节，支持追加、清空和借用为 `&str`；存活的 `as_str()` 视图会阻止可能使其失效的可变操作。
+## C 后端与运行时
 
-## 后端状态
+- 后端接口只返回一个字符串，产物是一个包的单个 `.c` 文件，没有 `.h`；文件头注释给出完整的编译命令。
+- 内部符号一律转义成 `riddle_<kind>_<十六进制>`，只有 `extern "C"` 定义和 `#[c_export]` 的函数使用源码原名，且名称必须是合法 C 标识符。
+- 类型映射的要点：`&T` 和 `&mut T` 都是 `T*` 且不加 `const`（`mut` 字段要能经共享引用写入）；`str` 与 `&[T]` 是 `{ ptr, len }` 胖表示；枚举降成 tagged struct；匿名函数值是 `riddle_closure_<hash>`，字段为 `call`、`env`、`drop`；`dyn Trait` 是数据指针加方法槽，拥有所有权的形式多一个 `drop` 槽。
+- 整数加减乘与位运算先提升到无符号载体再还原，避免有符号溢出 UB；除法与取模内联除零和 `MIN / -1` 检查；越界检查是内联的 `if` 加 `abort()`；panic 输出 `thread 'main' panicked at ...` 后终止。
+- GC 描述符表按写入函数的 `heap_alloc` 生成，每个类型一张偏移数组，`NULL` 表示退回逐字保守扫描，槽数上限 `RGC_MAX_DESCRIPTOR_SLOTS` 是 512（第 513 个槽才退化，不是「达到 512 就退化」）。
+- 运行时有三份 C 源码：默认的 mark-sweep `runtime.c`、`no_gc_runtime.c` 和总是单独链接的 `args_runtime.c`。只有需要 runtime 的程序才会生成 `int main(int argc, char **argv)` 包装并调用 `riddle_args_init` 与 `rgc_init`；不需要 runtime 的 `fun main() { }` 直接是 `int main(void) { return 0; }`。
+- `Clue.toml` 的 `[runtime] source` 可以用自定义 provider 替换内存运行时，provider 至少要提供 `rgc_init`、`rgc_alloc(size, descriptor)`、`rgc_realloc`、`rgc_free`、`rgc_collect`；`gc = false` 与 `source` 互斥。`gc = false` 时编译器把 `heap_alloc` 降为 `riddle_alloc` 并停止生成描述符表。
+- FFI 支持的形态：标量、`*const T` / `*mut T`（声明处统一成 `void*`）、`&T`、按值的 struct 与元组、`&[T]`（拆成指针加长度）、导入参数与返回位置上的 `&str`（调用点复制并补 NUL，指针只在这次调用内有效）。不支持的形态：裸 `[T]`、裸 `str` 参数与返回、带泛型参数的 `extern` 声明，导出名非法时报 `is not a valid C identifier`。
+- 生成代码的 ABI 属于技术预览，跨版本不保证兼容。
 
-| 后端 | 状态 |
-|------|------|
-| C backend | CLI 可用：`--backend c`。输出使用 `rgc` 运行时 ABI；默认 provider 由 `clue` 选择，也支持自定义 provider |
-| MIR 解释器 | CLI 可用：`riddle run` / `riddle repl`。执行降级后的 MIR，标准库 `extern` 由原生 shim 支撑，用户 `extern "C"` 不支持 |
+## 编辑器与 LSP
 
-C backend 实现统一的 `Backend` trait：`compile(&mut self, module: &Module) -> Result<String, Self::Error>`。
+`riddle-lsp` 只有 stdio 传输，参数只有 `--no-std`、`--completion-delay-ms`（默认 40）和 `--trace-latency`。它用与 `riddlec` 相同的检查管线，停在 move/borrow 之后，不降级 MIR。
 
-C backend 会把标量 std 运算 trait 的显式方法调用直接输出为带确定性溢出、除法和移位保护的 `+`、`-`、`*`、`&`、`<<` 等 C 表达式，不声明或定义对应的 primitive wrapper；用户类型的 trait 方法仍输出普通 C 函数。
+已实现的能力：增量文本同步、pull 与 workspace 诊断、补全（含自动导入）、悬停、签名帮助、声明 / 定义 / 类型定义 / 实现跳转、查找引用、重命名（带 prepareRename）、调用层级、类型层级、文档与工作区符号、文档高亮、语义 Token（full、range、delta）、Inlay Hint、折叠、选区范围、文档链接、整文档与范围格式化、代码动作。代码动作里有 7 种 quickfix（补 `mut`、包 `unsafe` 块、补缺失字段、补 match 分支、删空 `use`、替换成 `drop(...)` 等）、解析类修复（就近名字建议、导入、生成 trait 方法 stub）和 `source.organizeImports`、`source.addMissingImports`、`source.fixAll` 三个聚合动作。
 
-## 工具状态
+诊断的 `source` 是 `riddle` 或 `clue`，有码的诊断附带指向错误码手册的链接；服务器自身的码只有 `LSP0001`（缓冲区与编辑器失同步）。`Clue.toml` 的诊断码是 `CLUE0001`–`CLUE0004`。
 
-| 工具 | 状态 |
-|------|------|
-| `riddle fmt` | 源码格式化 CLI，支持文件、标准输入、`--check`、缩进宽度和硬制表符；与 LSP 复用 formatter |
-| `riddle run` | 单文件解释执行 CLI（`--seed`、`--` 之后的程序参数），不需要 C 工具链 |
-| `riddle repl` | 交互式会话 CLI，由同一 MIR 解释器支撑，支持 `:help` / `:reset` / `:mir` / `:quit` |
-| `riddlec` | 编译器 CLI，支持前端检查、MIR 降级、`--emit mir` 和 C backend |
-| `riddle-lsp` | LSP 服务器，基于 `tower-lsp`，提供诊断、补全、悬停、签名帮助、符号导航、引用、重命名、格式化与区域格式化、Inlay Hint、语义 Token 与工作区 pull 诊断，并识别过程宏命名空间 |
-| `clue` | 包管理器和项目构建器，支持项目、workspace、path/git/registry 依赖、锁文件、features、test/bench、打包发布与安装、`clue doc` HTML 文档生成，以及库产物的全局构建缓存与同级依赖并行构建；二进制项目会保留 C 并生成本机可执行文件，库项目可生成 `.rmeta`、`.rlib`、静态库和动态库，过程宏依赖构建为宿主进程 |
+已知限制：
+
+- 位置编码要协商出 `utf-16`、`utf-8`、`utf-32` 之一，否则 `initialize` 返回 `invalid_params`；
+- 类型层级只在客户端支持动态注册时可用，静态 capabilities 里没有它；
+- 索引在保存与文件事件上重建；
+- Clue.toml 的 schema 是手写白名单，`[build] cache` 会被报成未知键 `build.cache`；
+- `--no-std` 会让语义高亮、悬停和补全失去 std 信息；
+- 单文档路径用独立检查会话，语义高亮、Inlay Hint 和代码动作不保证跨包。
+
+仓库里提供 VS Code、IntelliJ IDEA 2026.1+、Zed 和 Helix 四个适配。把 `Clue.toml` 路由到服务器的是 VS Code（独立 `clue` 语言 id）和 Helix（按文件名 glob），Zed 与 IntelliJ 只处理 `.rid`。
+
+## 工具与项目
+
+| 工具 | 当前能力 |
+| --- | --- |
+| `riddlec` | 前端检查、`--emit mir`、`--backend c`、`--no-std`、`--target` |
+| `riddle fmt` | 就地改写、`--emit stdout`、`--check`、`--tab-size`、`--hard-tabs`，无文件时读 stdin |
+| `riddle run` | 单文件解释执行，`--seed` 与 `--` 之后的程序参数 |
+| `riddle repl` | 同一解释器，指令 `:help`、`:reset`、`:mir`、`:quit` |
+| `riddle-lsp` | stdio 语言服务器，见上一节 |
+| `clue` | 包管理与构建 |
+
+`clue` 的子命令是 `init`、`new`、`check`、`build`、`run`、`add`、`remove`、`fetch`、`update`、`tree`、`metadata`、`package`、`publish`、`install`、`uninstall`、`clean`、`doc`、`test`、`bench`，没有 `fmt`、`lsp`、`repl`、`target`。`Clue.toml` 支持的 section 是 `[package]`、`[dependencies]`、`[dev-dependencies]`、`[features]`、`[[bin]]`、`[lib]`、`[[test]]`、`[[example]]`、`[[bench]]`、`[workspace]`、`[runtime]`、`[build]`；没有 `[profile]`、`[patch]`、`[replace]`、`[lints]`、`[target.*]`、`[workspace.dependencies]`、`[workspace.package]`。依赖有三种来源：版本字符串（registry）、`path`、`git`（`branch`、`tag`、`rev` 只能选一个）。锁文件是 Clue.lock v3。registry 配置不在 Clue.toml，而在 `$CLUE_HOME/config.toml` 或项目下的 `.clue/config.toml`。
+
+宿主 debug 构建写 `.clue/build`，release 或跨目标写 `.clue/build/<triple>/<profile>`。库产物是 `.o`、`.rlib` 和 `.rmeta`（另有可选的静态库与动态库），二进制产物是本机可执行文件；同名库可以命中 `$CLUE_HOME/cache/build` 下的全局缓存，`[build] cache = false` 或 `CLUE_BUILD_CACHE=0` 关闭它。
+
+需要 C 工具链的命令是 `clue build`、`clue run`、`clue test`、`clue bench`、`clue install`：它们生成 C 之后调用 C11 编译器并链接，找不到时报 `no usable C11 compiler and linker found...`，可以用 `CC` 指定；构建库还需要 `ar` 或 `llvm-lib` / `lib`。不需要 C 工具链的是 `clue check`、`clue doc`、`riddle run`、`riddle repl`、`riddle fmt`、`riddle-lsp` 和 `riddlec --emit mir`。`clue doc` 生成 `.clue/doc/*.html`，它的 `-p/--package` 被接受但不生效；`clue new` 没有 `--proc-macro`，过程宏包要手写清单。
+
+过程宏包用 `[lib] proc-macro = true` 标记，导出属性是 `#[proc_macro]`、`#[proc_macro_attribute]` 和 `#[proc_macro_derive(Name)]`。构建产物是动态库加一个 runner 可执行文件，协议版本 1，单次展开超时 10 秒，消息上限 16 MiB。宏里的 `print` 走 stderr（stdout 是协议通道），宏里的 panic 被隔离在子进程里。过程宏宿主里 clue 会注入 `std/std/proc_macro.rid` 与 `std/std/syn.rid`，所以不需要声明 `syn` 依赖；`quote!` 是编译器内置函数宏，std 里没有 `quote.rid`。用法见[内置 `syn` 与 `quote!`](./syn.md)和[编写过程宏](./proc-macros.md)。
 
 ## 当前限制
 
-- `mut` 字段的冲突检查按被调函数的**内部写摘要**工作：每个函数 / 方法按参数记录它可能写入的 `mut` 字段路径（在路径上第一个 `mut` 字段处截断，因为写它下面任何东西都被它覆盖），并沿具体 callee 传递求不动点——"只写 `a` 的方法"不会与指向 `b` 内部的借用冲突，"本身不写、转发给 `helper` 的方法"也能追踪到实际写入。检查覆盖一次调用中**所有以共享引用传入的实参**，不只是方法接收者，所以自由函数 `write_a(&holder)` 或别的方法经 `&T` 写入同样受检。以下情况退化为保守的"该实参的全部 `mut` 字段"：`dyn` 分派、函数指针调用、泛型 bound 分派等没有具体 callee 的调用，以及没有函数体的 `extern` 声明；
-- 标量类型限于 C11 可移植表示：`i128`、`u128`、`f16`、`f128` 在词法上可写，但类型检查会拒绝并给出诊断，语义上不存在这些宽类型；
-- 语言尚无命名生命周期语法。返回值借用已按三层精确化（见上文「所有权、移动和逃逸」）：具体 impl 调用按字段级来源摘要实例化；经 `Vector::get` 这类原始指针实现取元素的路径已改走切片访问（tree/hash 集合迭代器不再保守）；泛型 bound 分发依赖 trait 方法上的 `#[flow = "behind_reference"]` 契约——逐 impl 验证（存在借自身存储的实现即整体降级回保守合并）。泛型 bound 的关联类型绑定按结构归一（`Item = &T`、`Out = (T, i32)`、`Out = Vector<T>` 都会与具体 impl 的关联类型逐层匹配并推断其中的泛型参数），`T: Copy` 等 bound 也参与 move checker 的 Copy 判定，因此泛型体内匹配关联类型返回的 payload 并解引用（如 `match it.next() { Some(x) => *x }`）可正常编译与运行；
-- 进程参数 `std::env::args()` / `args_os()` 需要链接 `args_runtime.c`（见上文编译流程）；C 入口 `main` 无条件调用 `riddle_args_init`，因此参数在任意包中使用都可用；
-- 当前定位为单线程语言：线程 / 互斥锁 / 原子变量 / `async` / `await` / 网络尚未实现；开区间范围（`a..` / `..b`）、范围模式（`match` 中的 `a..=b`）、循环标签、`Rc`/`Arc`/`Cell`/`RefCell` 等智能指针与内部可变性也尚未实现；`match` guard 目前只在 `match` 中提供，`let` 解构与解构赋值已直接支持；
-- 数字解析不支持十六进制浮点；整数已支持 `0x` / `0o` / `0b` 前缀与 `_` 分隔符；
-- 泛型目前偏向单态化，尚未覆盖完整 Rust 泛型能力；
-- `riddlec` 的 C backend 只输出 C；`clue build` 会严格使用 `CC`，或自动选择能完成 C11 编译和链接的系统 C 编译器来生成本机可执行文件；
-- 逃逸分析会沿结构体、元组和数组字段传播引用来源；字段模式绑定可以单独提升到 GC 堆，只有根绑定或无法静态细分的访问才提升整个存储槽；
-- TODO：数组 `IntoIterator` 当前按索引顺序产出元素；若未来允许自定义数组迭代器乱序移出元素，需要先加入 `MaybeUninit` / `ManuallyDrop` 等价存储和逐槽存活状态，确保剩余元素只析构一次；
-- trait 方法支持对象安全的 `&dyn Trait` / `&mut dyn Trait` 借用对象和拥有所有权的 `dyn Trait` 值；拥有值使用数据指针、方法表和类型专属 drop 槽位，并在 GC / no-GC runtime 下分别使用 `rgc_alloc` / `rgc_free` 或 `riddle_alloc` / `riddle_free`；拥有对象可以重借用为 `&dyn Trait`，父 trait 支持对象向上转型，泛型参数可在满足 trait bound 时转换为拥有对象，数组字面量会逐元素应用转换；跨父 trait 的同名方法拒绝为歧义，非对象安全方法会明确报告原因；`dyn Fn`、`dyn FnMut` 和 `dyn FnOnce` 支持拥有值与借用值，并复用 callable ABI；仍不支持带泛型方法的动态对象或异构可调用值容器；
-- 匿名函数不支持泛型参数、返回类型标注或自递归绑定，需要时使用具名泛型函数；带泛型方法的动态对象或异构可调用值容器仍未支持；
-- 这是开发中工具链，不保证语法和 ABI 稳定。
+- 单线程语言：没有线程、互斥锁、原子变量、`async` / `await` 和网络，标准库里也没有对应模块。
+- 没有生命周期语法，`'a` 是词法错误。返回值的借用来源靠过程间摘要推断，泛型 bound 分派的部分依赖 trait 方法上的 `#[flow = "behind_reference"]` 契约。
+- 没有 `Box`、`Rc`、`Arc`、`Weak`、`Cell`、`RefCell`。共享可变状态目前只能用 `mut` 字段表达。
+- 范围表达式只有 `a..b` 和 `a..=b`，两端都必须有操作数；`a..`、`..b`、`..` 是语法错误。`match` 里也不能写范围模式 `1..=5`。
+- 没有循环标签，`'outer: loop { ... }` 无法解析；跳出多层循环要用函数或标志位。
+- 没有 `macro_rules!`。宏只有路径式调用，加上内置宏和 `[lib] proc-macro = true` 包导出的过程宏。
+- trait 里不能声明关联 const，`const` 只能出现在模块和 impl 中。
+- `i128`、`u128`、`f16`、`f128` 只在词法层可写，语义上不存在这些宽度。
+- 没有 `union`、元组结构体、unit 结构体、显式枚举判别值、结构体的函数式更新语法 `..base` 和内部属性 `#![...]`。
+- 过程宏运行时接口（`riddle_proc_*`）和用户自定义 `extern "C"` 在解释器下不可用。
+- `riddle run` 只接受一个源文件；多文件程序要用 `riddlec` 或 `clue`。
+- 数字解析没有十六进制浮点。
+- `for` 头部的模式必须不可反驳，否则报 E0057。
+- `mut` 字段的内部写检查在 `dyn` 分派、函数指针调用、泛型 bound 分派和无函数体的 `extern` 声明处退化为保守结果。
+- 属性没有条件编译：`#[cfg]`、`#[inline]` 之类不生效也不报错。
+- 递归类型检查按裸名查找，跨包同名类型会互相干扰，限定路径写法可能漏检。
+- 生成代码的 ABI 不保证稳定，跨版本可能不兼容地变化。

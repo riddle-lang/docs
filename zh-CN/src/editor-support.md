@@ -1,169 +1,157 @@
 # 编辑器与 LSP
 
-Riddle 通过 `riddle-lsp` 为编辑器提供实时诊断、自动导入补全、语义高亮、悬停信息、签名帮助、代码跳转、调用与类型层级、查找引用、重命名、符号导航、格式化和代码折叠。当前仓库提供 Helix、VS Code、Zed 和 IntelliJ IDEA 2026.1+ 的适配文件。
+`riddle-lsp` 是工具链里唯一的语言服务器，仓库为 VS Code、Helix、IntelliJ IDEA 和 Zed 各带一份适配。四份适配的完成度不一样：只有 VS Code 和 Helix 会把 `Clue.toml` 也发给服务器。
 
-## 准备 riddle-lsp
+## riddle-lsp 的参数与传输
 
-先按照[安装 Riddle 工具链](./install.md)完成安装，并确认编辑器启动时能找到服务器：
+服务器只支持 stdio：启动后从 stdin 读 JSON-RPC，往 stdout 写。没有 TCP、端口或 socket 模式。全部参数就三个：
 
-```bash
-riddle-lsp --version
-```
+| flag | 默认 | 作用 |
+| --- | --- | --- |
+| `--no-std` | 关 | 不加载内置标准库 |
+| `--completion-delay-ms <MS>` | `40` | 把窗口内到达的补全请求合并成一次 |
+| `--trace-latency` | 关 | 把各阶段耗时打印到 stderr；也可用环境变量 `RIDDLE_LSP_TRACE_LATENCY` |
 
-如果命令不可用，请把 Riddle 二进制目录加入 `PATH`，或在支持路径设置的编辑器中填写 `riddle-lsp` 的绝对路径。JetBrains 插件当前固定从 IDE 进程的 `PATH` 启动服务器。四个适配都会识别 `.rid` 文件；服务器会发现每个工作区文件夹内的 Clue 项目，加载项目模块和本地依赖，并为未打开文件建立内存索引。
+另有 clap 自带的 `-V/--version` 和 `-h/--help`。没有 `--tcp`、`--port`、`--stdio`、`--log`、`--log-file`、`--clientProcessId` 之类的选项。`serverInfo` 的名字是 `riddle-lsp`，版本串是 crate 版本加编译时的 git hash。
 
-## 打包编辑器扩展
+位置编码在 `initialize` 时协商，支持 `utf-16`、`utf-8`、`utf-32`（优先 utf-16）。客户端一个都不提供时，`initialize` 返回 `invalid_params`，消息是 `riddle-lsp needs one of the position encodings utf-16, utf-8 or utf-32; the client offered only: ...`，服务器不会退回错误坐标。
 
-在仓库根目录运行 PowerShell 或 Bash 脚本：
+`--no-std` 直接关掉标准库加载，语义高亮、悬停和补全都会失去 std 里的信息，只保留当前缓冲能解析出的部分。
 
-```powershell
-pwsh -File editors\package.ps1
-```
+工作区发现会跳过 `.git`、`.clue`、`target`、`node_modules`、`dist`；如果打开的是虚拟工作区根，就只加载 `[workspace].crates` 里的成员。索引在保存和文件事件上重建，`textDocumentSync.save` 是开启的，但没有 `willSave`。
 
-```bash
-bash editors/package.sh
-```
+## 服务器实现了什么
 
-脚本需要 Node.js、npm、JDK 25 或更高版本和网络连接，Bash 版本还需要 `zip` 命令。首次构建 JetBrains 插件时，Gradle wrapper 会下载 Gradle 9 和 IntelliJ Platform 2026.1 SDK。脚本会在 `editors/dist` 中生成：
+| 能力 | 细节 |
+| --- | --- |
+| 文档同步 | open/close、增量 change、save |
+| 诊断 | push 与 pull 都有；`diagnosticProvider` 打开 `interFileDependencies` 与 `workspaceDiagnostics`；`workspace/diagnostic` 覆盖未打开模块与本地依赖 |
+| 补全 | `.` 和 `:` 触发；跨文件、自动导入、重名路径区分；`resolveProvider` 为 false |
+| 悬停 | 函数签名、推断类型、struct/enum 声明；方法调用显示实例化后的签名 |
+| 签名帮助 | `(` 和 `,` 触发，`,` 重新触发，跟踪当前参数 |
+| 跳转 | 定义、声明、类型定义、trait 方法实现、调用层级；类型层级的条件见下文 |
+| 引用与重命名 | 项目级查找引用；`prepareProvider` 为 true；字段、trait 方法、导入别名都能重命名 |
+| 符号 | 文档符号（含 `impl` 块）与工作区符号 |
+| 语义高亮 | 全文与区间两种请求，全文带 delta；legend 有 16 种 token type 和 4 种 modifier（declaration、mutable、static、defaultLibrary） |
+| Inlay Hint | `let` 绑定推断类型、匿名函数参数类型（已写类型的不提示）、多行链式调用每一级的结果类型、调用实参名 |
+| 折叠与选择范围 | 花括号块、连续注释行、连续 `use` 组；结构化选择范围 |
+| 文档链接 | `mod foo;`（内联 `mod` 跳过）与 `use` 的首段，链到 `foo.rid` 或 `foo/mod.rid`；两种文件都在时不产生链接，未落盘的缓冲不产生链接 |
+| 格式化 | 全文与区间格式化，`tabSize` / `insertSpaces` 由客户端传入 |
+| 代码动作 | `quickfix`、`source.organizeImports`、`source.addMissingImports`、`source.fixAll`，`resolveProvider` 为 false |
+| Clue.toml | 诊断、节与键补全、键悬停、节符号 |
 
-| 文件 | 用途 |
-|------|------|
-| `riddle-vscode.vsix` | 直接导入 VS Code |
-| `riddle-intellij.zip` | 从磁盘安装到受支持的 JetBrains IDE |
-| `riddle-helix.zip` | 解压后合并到 Helix 配置目录 |
-| `riddle-zed.zip` | 解压后作为 Zed Dev Extension 导入 |
+诊断的 `source` 是 `riddle`（编译器）或 `clue`（清单与项目加载）。带错误码的诊断会附上 `codeDescription`，指向 `https://riddle-lang.github.io/docs/errorcode.html#<小写错误码>`。服务器自己产生的码只有 `LSP0001`：缓冲与编辑器失同步时用它，而不是静默清掉诊断。
 
-JetBrains ZIP 和 VSIX 可以直接安装。Helix 和 Zed 的 ZIP 只负责分发所需文件；导入方式见下文。
+`quickfix` 的修复由诊断驱动：
+
+| 触发 | 动作 |
+| --- | --- |
+| E0031 且消息含 `cannot call a mutable closure through an immutable binding` | 给匿名函数绑定加 `mut` |
+| E0031 且消息以 `cannot assign to` 开头 | 给绑定加 `mut` |
+| E0046 且消息以 `requires an unsafe block` 结尾 | 包一层 `unsafe` 块 |
+| E0007 且消息以 `missing field` 开头 | 插入缺失字段（`todo!()` 占位） |
+| E0039 且消息含 `missing pattern` | 补 match 分支或通配分支 |
+| E0051 且消息是 `empty use declaration` | 删掉空的 `use` |
+| E0056 且消息建议改用 `drop(value)` | 改写成 `drop(...)` |
+
+需要分析的修复有 E0050 的名字纠错与自动导入、E0013 的方法名纠错、E0026 的 trait 方法 stub。`source.organizeImports` 排序、去重并删除空 `use`；`source.addMissingImports` 只合并自动导入类编辑；`source.fixAll` 收集附加编辑并避开重叠。
+
+调用层级只包含编译器能静态解析的目标，不推测函数指针、匿名函数或 trait 的运行时分派。类型层级不在静态 capabilities 里（当前依赖的 `lsp-types` 没有这个字段），只有客户端声明支持动态注册时，服务器才在 `initialized` 阶段注册 `textDocument/prepareTypeHierarchy`；客户端不支持动态注册时这项功能不可见。文件重命名监听只广告 `**/*.rid` 且 `kind = File`。
+
+几个容易被忽略的限制：`codeActionProvider`、`completionProvider`、`documentLinkProvider` 的 `resolveProvider` 都是 false；单文档场景（未纳入 Clue 项目的文件）走独立的检查会话，语义高亮、Inlay Hint 和代码动作不保证跨包；不可重命名的目标返回 `invalid_params`（例如 `there is nothing to rename at this position`、`this item is not defined in the project and cannot be renamed`），而不是空结果。
+
+## 编辑器支持矩阵
+
+| 项目 | VS Code | Helix | IntelliJ IDEA | Zed |
+| --- | --- | --- | --- | --- |
+| 适配形式 | JavaScript 扩展 | `languages.toml` 加查询文件 | Kotlin 插件 | WASM 扩展 |
+| `.rid` 识别 | 语言 id `riddle`，扩展名 `.rid` | `file-types` 里的 `{ glob = "*.rid" }` | 文件类型 `Riddle`，扩展名 `rid` | `path_suffixes = ["rid"]` |
+| 基础高亮 | 自带 TextMate 语法 | Rust Tree-sitter grammar 加 `highlights.scm` | 无 | Rust Tree-sitter grammar 加 `highlights.scm` |
+| `Clue.toml` 路由 | 有，独立 `clue` 语言 id | 有，按文件名 glob | 无 | 无 |
+| 适配层的 Inlay Hint 开关 | `riddle.inlayHints.enabled` | 无 | 无 | 无 |
+| 服务器路径 | `riddle.server.path` 与 `riddle.server.arguments` | `languages.toml` 的 `command` 与 `args` | 无，硬编码 `riddle-lsp` | `lsp.riddle-lsp.binary` 的 `path` 与 `arguments` |
+| 打包产物 | `riddle-vscode.vsix` | `riddle-helix.zip` | `riddle-intellij.zip` | `riddle-zed.zip` |
+| 安装方式 | `code --install-extension` | 合并到 Helix 配置目录 | Install Plugin from Disk | Dev Extension |
+
+默认情况下四份适配都从 `PATH` 找 `riddle-lsp`。VS Code、Helix、Zed 可以改成显式路径，IntelliJ 只能依赖 `PATH`；Zed 的扩展在设置和工作树的 `PATH` 里都找不到时报 `riddle-lsp was not found on PATH`。
+
+## VS Code
+
+扩展的 `documentSelector` 同时匹配 `riddle` 和 `clue` 两种语言，所以 `.rid` 与 `Clue.toml` 共用同一个服务器实例。激活事件是 `onLanguage:riddle`、`onLanguage:clue` 和 `workspaceContains:**/Clue.toml`。
+
+TextMate 语法（`source.riddle`）只覆盖 `.rid`；`Clue.toml` 靠 VS Code 内建的 TOML 高亮显示，语义信息来自服务器。扩展还注册了一个名为 `riddle` 的图标主题。
+
+| 配置项 | 类型 | 默认 | 作用 |
+| --- | --- | --- | --- |
+| `riddle.server.path` | string | `riddle-lsp` | 服务器可执行文件路径 |
+| `riddle.server.arguments` | string[] | 空 | 传给服务器的参数 |
+| `riddle.inlayHints.enabled` | boolean | `true` | Inlay Hint 总开关 |
+| `riddle.trace.server` | `off` / `messages` / `verbose` | `off` | VS Code 与服务器之间的 JSON-RPC 跟踪 |
+
+`riddle.inlayHints.enabled` 是扩展自己实现的：关掉后中间件直接返回空数组，其余能力不受影响。
+
+构建扩展需要 npm：`npm run build` 先生成图标，再用 esbuild 把 `extension.js` 打成 `dist/extension.js`；产出 vsix 的是 `vsce package`（打包脚本按 `npm ci`、`npm run check`、`vsce package` 的顺序执行）。安装用 `code --install-extension riddle-vscode.vsix`，也可以在扩展面板的 `...` 菜单里选 **Install from VSIX...**。扩展的 README 示例里写的是旧版本号，实际文件名以打包输出为准。仓库里没有发布到 Marketplace 的配置，release 流程只把 vsix 作为发布资产上传。
 
 ## Helix
 
-解压 `editors/dist/riddle-helix.zip`。压缩包内容与仓库中的 `editors/helix` 相同：
+`languages.toml` 注册一个服务器和一个语言：
 
-```text
-editors/helix/
-├── languages.toml
-└── runtime/queries/riddle/
+```toml
+[language-server.riddle-lsp]
+command = "riddle-lsp"
+
+[[language]]
+name = "riddle"
+scope = "source.riddle"
+language-id = "riddle"
+file-types = [
+    { glob = "*.rid" },
+    { glob = "Clue.toml" },
+]
+roots = ["Clue.toml", ".git"]
+comment-tokens = "//"
+indent = { tab-width = 4, unit = "    " }
+grammar = "rust"
+language-servers = ["riddle-lsp"]
 ```
 
-1. 把解压目录中 `languages.toml` 的两个配置块合并到 Helix 配置目录的 `languages.toml`。已有文件时不要直接覆盖。
-2. 把解压目录中的 `runtime/queries/riddle` 复制到 Helix 配置目录的 `runtime/queries/riddle`。
-3. 重新启动 Helix。
+`Clue.toml` 由同一个 `riddle` 条目按文件名匹配，所以清单的诊断、补全和悬停也来自这个服务器。查询文件有三个：`runtime/queries/riddle/highlights.scm`、`indents.scm`、`textobjects.scm`。
 
-Helix 配置目录通常是：
+仓库里没有 Helix 的安装说明。按 Helix 的通用做法：把上面的两个配置块合并进 Helix 配置目录的 `languages.toml`（已有文件时不要整个覆盖），把 `runtime/queries/riddle` 复制到配置目录的 `runtime/queries/riddle`，然后重启 Helix。Linux / macOS 的配置目录是 `~/.config/helix`，Windows 是 `%AppData%\helix`。安装后可以用 `hx --health riddle` 检查语言服务器和三类查询是否都被找到。
 
-| 平台 | 路径 |
-|------|------|
-| Linux / macOS | `~/.config/helix` |
-| Windows | `%AppData%\helix` |
-
-直接从仓库导入时，查询文件可以这样复制：
-
-```bash
-mkdir -p ~/.config/helix/runtime/queries/riddle
-cp editors/helix/runtime/queries/riddle/*.scm ~/.config/helix/runtime/queries/riddle/
-```
-
-PowerShell：
-
-```powershell
-$queries = Join-Path $env:APPDATA "helix\runtime\queries\riddle"
-New-Item -ItemType Directory -Force $queries | Out-Null
-Copy-Item editors\helix\runtime\queries\riddle\*.scm $queries
-```
-
-默认配置从 `PATH` 启动服务器。需要指定路径或参数时，修改合并后的服务器配置：
+需要指定服务器路径或参数时改 `[language-server.riddle-lsp]`：
 
 ```toml
 [language-server.riddle-lsp]
 command = "/path/to/riddle-lsp"
-args = ["--no-std"]
-```
-
-补全默认立即响应。需要在持续输入时合并请求，可追加 `--completion-delay-ms`，单位为毫秒：
-
-```toml
 args = ["--completion-delay-ms", "25"]
 ```
 
-检查安装结果：
-
-```bash
-hx --health riddle
-```
-
-`riddle-lsp`、Tree-sitter parser、Highlight queries、Textobject queries 和 Indent queries 都应显示可用。
-
-## VS Code
-
-VS Code 适配包含 `.rid` 文件注册、基础 TextMate 高亮和 LSP 客户端。当前尚未发布到 Marketplace，需要安装本地 VSIX。
-
-命令行安装打包脚本生成的扩展：
-
-```powershell
-code --install-extension editors\dist\riddle-vscode.vsix
-```
-
-也可以打开扩展面板，在右上角 `...` 菜单中选择 **Install from VSIX...**，然后选择 `riddle-vscode.vsix`。
-
-安装完成后重新打开 `.rid` 文件。右下角的语言模式应显示 `Riddle`。
-
-扩展默认从 `PATH` 启动 `riddle-lsp`。可以在 `settings.json` 中覆盖路径和参数：
-
-```json
-{
-    "riddle.server.path": "/path/to/riddle-lsp",
-    "riddle.server.arguments": ["--completion-delay-ms", "25"]
-}
-```
-
-Windows 路径中的反斜杠需要转义：
-
-```json
-{
-    "riddle.server.path": "C:\\tools\\riddle\\riddle-lsp.exe"
-}
-```
-
-修改服务器路径或参数后，执行 **Developer: Reload Window** 重新启动扩展。
+Helix 的 `grammar = "rust"` 意味着 Tree-sitter 按 Rust 语法近似处理结构；Riddle 专有的标识符分类来自服务器的语义高亮。
 
 ## IntelliJ IDEA
 
-插件使用 IntelliJ Platform 2026.1 的 LSP integration API，源码全部为 Kotlin。IntelliJ IDEA 2026.1 及更高版本可用；Android Studio 不在当前支持范围内。
+插件 id 是 `org.riddlelang.intellij`，依赖 `com.intellij.modules.platform` 和 `com.intellij.modules.lsp`。它注册文件类型 `Riddle`（扩展名 `rid`），并通过平台自带的 LSP API 启动服务器。启动命令硬编码为 `riddle-lsp`，从 IDE 进程的 `PATH` 里查找，插件没有提供任何配置项，也不传额外参数；改完系统 `PATH` 要完全退出并重启 IDE。
 
-1. 打开 **Settings | Plugins**。
-2. 点击齿轮菜单，选择 **Install Plugin from Disk...**。
-3. 选择 `editors/dist/riddle-intellij.zip`，然后重新启动 IDE。
-4. 打开 `.rid` 文件，确认文件类型显示为 `Riddle`，并检查诊断、补全和语义高亮。
+插件没有贡献 TextMate 或 Tree-sitter 语法，语义高亮完全来自服务器；服务器没起来时 `.rid` 文件没有任何 Riddle 高亮。它也不支持 `Clue.toml`，清单文件仍按普通文件处理。
 
-插件不向 `riddle-lsp` 传递额外参数，并固定从 IDE 进程的 `PATH` 查找命令。修改系统 `PATH` 后需要完全退出并重新启动 IDE。JetBrains 适配没有 TextMate 或 Tree-sitter 回退；没有启动 LSP 时不会出现 Riddle 语义高亮。
-
-只构建这个插件时，可以运行：
+目标平台是 IntelliJ Platform 2026.1 及以上，不支持 Android Studio；构建需要 JDK 25 或更高版本作为 Gradle JVM。只构建插件时：
 
 ```powershell
 Set-Location editors\intellij
 .\gradlew.bat buildPlugin
 ```
 
-生成的版本化 ZIP 位于 `editors/intellij/build/distributions`。
+产物在 `build/distributions/riddle-intellij-<version>.zip`。安装走 **Settings | Plugins | Install Plugin from Disk...**，选择 ZIP 后重启 IDE。仓库里没有发布到 Marketplace 的配置。
 
 ## Zed
 
-Zed 适配当前以 Dev Extension 方式安装。先把 `riddle-zed.zip` 解压到固定目录，并确认该目录顶层包含 `extension.toml`，然后：
+扩展声明一个语言服务器 `riddle-lsp`，语言名 `Riddle`，`schema_version = 1`。语言配置里 `grammar = "rust"`、`path_suffixes = ["rid"]`、`line_comments = ["// "]`、`tab_size = 4`、`hard_tabs = false`，并带括号自动闭合；高亮查询在 `languages/riddle/highlights.scm`。
 
-1. 在命令面板运行 **zed: extensions**。
-2. 选择 **Install Dev Extension**。
-3. 选择刚才解压的目录；直接从仓库导入时选择 `editors/zed`。
-4. 重新打开 `.rid` 文件，并确认语言模式为 `Riddle`。
-
-扩展默认从工作树的 `PATH` 查找 `riddle-lsp`。也可以在 Zed 的 `settings.json` 中指定路径、参数，并启用完整语义 Token：
+扩展本体是 WASM（`zed_extension_api` 0.1.0），启动服务器时先读工作树的 `lsp.riddle-lsp.binary` 设置，没有再退回 `which("riddle-lsp")`：
 
 ```json
 {
-    "languages": {
-        "Riddle": {
-            "semantic_tokens": "full"
-        }
-    },
     "lsp": {
         "riddle-lsp": {
             "binary": {
@@ -175,70 +163,54 @@ Zed 适配当前以 Dev Extension 方式安装。先把 `riddle-zed.zip` 解压�
 }
 ```
 
-修改配置后，在命令面板运行 **language server: restart**。Zed 和 Helix 当前复用 Rust Tree-sitter grammar 作为结构化回退；Riddle 专用的标识符分类由 `riddle-lsp` 语义 Token 提供，注释（含 `///`、`/** */`、`/* */`）与跨行 token 也由语义 Token 覆盖，而 Tree-sitter 回退按 Rust 语法近似处理。
+基础颜色来自 Rust Tree-sitter grammar；服务器的语义高亮需要显式开启：
 
-`Clue.toml` 由 VS Code 与 Helix 适配按独立语言路由给同一个服务器；Zed 与 JetBrains 适配目前只把 `.rid` 文件交给服务器，因此这两个编辑器里清单文件的诊断、补全与悬停不可用（原因见各自的适配说明）。
+```json
+{
+    "languages": {
+        "Riddle": {
+            "semantic_tokens": "full"
+        }
+    }
+}
+```
 
-## 当前能力
+Zed 不支持 `Clue.toml`：`zed_extension_api` 0.1.0 无法为一个服务器声明第二种语言。
 
-| 能力 | 状态 |
-|------|------|
-| `.rid` 文件识别 | Helix、VS Code、Zed、JetBrains 均支持 |
-| Clue 项目、未保存文件和未打开模块诊断 | 支持 |
-| 多工作区 Clue 项目发现、内存索引和按文件失效 | 支持 |
-| 解析、类型、move/borrow 诊断 | 支持 |
-| Clue 项目级函数、方法、struct、enum、trait、参数和可变绑定语义高亮 | 支持 |
-| 跨模块返回类型和调用参数名 Inlay Hint | 支持 |
-| Clue 项目中的关键字、类型、全局项、局部变量、模式绑定和导入别名补全 | 支持 |
-| 字段、实例方法、模块项、枚举变体和关联函数补全 | 支持 |
-| 诊断驱动的快速修复（加 `mut`、补缺失字段、补 match 分支、删除空 `use`、`drop` 重写、名字纠错与自动导入）及 `source.organizeImports`、`source.addMissingImports`、`source.fixAll` | 支持；四种代码动作种类都在 `codeActionProvider` 中声明，编辑器才能在「源代码操作」菜单中列出 |
-| 跨文件补全（包含已打开文件的未保存内容） | 支持 |
-| 公开符号自动导入、重名路径区分和确定性排序 | 支持 |
-| 函数签名、推断类型和 struct/enum 声明 Hover（最多 5 个顶层字段或变体，枚举 payload 完整）；方法调用显示实例化后的签名（替换过的接收者与返回类型） | 支持 |
-| 内联提示：`let` 绑定推断类型、lambda 参数推断类型、多行链式调用每级结果类型、调用参数名 | 支持；参数名提示按括号深度切分实参，多 token 实参（如 `f(a + b, c)`）不会错位 |
-| impl 块内补全缺失的 trait 方法（携带签名的 snippet）与关联类型 | 支持 |
-| 结构化选择范围（selectionRange）、`mod` 声明与 `use` 首段的模块文件链接、pull 诊断 | 支持 |
-| `Clue.toml` 清单：未知键/类型/semver/依赖规则诊断（CLUE0002–CLUE0004）、节与键补全、键悬停、节与键符号 | 支持；`[dependencies.<名>]` 与 `[[bin]]`/`[[example]]`/`[[test]]`/`[[bench]]` 的子键（`path`、`version`、`git`、`optional`、`required-features` 等）同样补全 |
-| 跳转定义（包含未打开的 Clue 模块） | 支持 |
-| 跳转声明与跳转类型定义 | 支持 |
-| trait 与 trait 方法的跳转实现 | 支持 |
-| 静态调用层级与 trait/实现类型层级 | 支持；类型层级依赖客户端的动态注册能力（当前依赖的 `lsp-types` 版本没有静态声明字段），不支持动态注册的客户端看不到该功能 |
-| 项目级查找引用与重命名（包含未保存文件、未打开模块、字段、trait 方法和导入别名） | 支持；不可重命名的目标会返回参数错误而不是空结果 |
-| 签名帮助与当前参数跟踪 | 支持 |
-| 文档符号与工作区符号搜索 | 支持；文档符号包含 `impl` 块（以被实现的类型命名，trait 名作为 detail，方法/常量/关联类型作为子项），`range` 为条目整体范围、`selectionRange` 为标识符范围 |
-| 文档引用高亮与代码折叠 | 支持；折叠区分花括号区块、连续注释行与顶层 `use` 组 |
-| 增量文档同步、过期分析取消与 Semantic Token delta | 支持；无法映射的增量修改不会被静默清除诊断，而是标记为不同步并报告 `LSP0001` |
-| 编辑器外部 `.rid`、`Clue.toml` 与 `Clue.lock` 文件变更 | 支持动态监听 |
-| 格式化与区域格式化 | 支持 |
-| 工作区级 pull 诊断（`workspace/diagnostic`） | 支持，含未打开模块与本地依赖 |
-| 位置编码协商 | 支持 UTF-16 / UTF-8 / UTF-32；客户端未提供三者之一时服务器直接报错而不是返回错误坐标 |
+仓库里没有 Zed 的安装说明。扩展目录顶层有 `extension.toml`，可以按 Zed 的 Dev Extension 流程从解压目录（或仓库里的 `editors/zed`）加载。打包产物 `riddle-zed.zip` 里是 `Cargo.lock`、`Cargo.toml`、`extension.toml`、`languages` 和 `src`。
 
-工作区中的 Clue 项目会建立内存索引。补全可通过独立的 `use path;` 编辑自动导入可达的公开符号；调用层级只包含编译器能够静态解析的目标，不推测函数指针、闭包或 Trait 的运行时分派。
+## Clue.toml 的 schema 偏差
+
+服务器侧的清单 schema 是一份手写白名单，覆盖 `package`、`dependencies`、`dev-dependencies`、`features`、`bin`、`lib`、`test`、`example`、`bench`、`workspace`、`runtime`、`build` 十二个节，和 `clue` 的解析器不共享代码。已知两处不一致：
+
+- `[build].cache` 在 `clue` 里是合法字段，但服务器的 `build` 白名单只有 `target`，编辑器会报 `unknown key build.cache`（`CLUE0003` 警告）。这是误报。
+- `[package]` 的白名单只有 `name`、`version`、`license`、`entry`、`publish`，所以合法的 `description`、`authors`、`repository` 也会被标成未知键（`unknown key package.description` 之类）。
+
+清单里的字段、默认值和消息以 [Clue 构建器](./clue.md) 为准。
+
+## 打包
+
+`editors/package.sh`（Bash，需要 `zip`）和 `editors/package.ps1`（PowerShell）都在 `editors/dist` 下产出四个文件：`riddle-vscode.vsix`、`riddle-intellij.zip`、`riddle-helix.zip`、`riddle-zed.zip`。
+
+- VS Code：`npm ci`、`npm run check`（语法检查加图标生成和 esbuild 打包），再用 `vsce package`。
+- IntelliJ：`gradlew buildPlugin`，脚本取 `build/distributions` 里最新的 `riddle-intellij-*.zip` 复制成 `riddle-intellij.zip`。
+- Helix：把 `languages.toml` 和 `runtime` 压成 zip。
+- Zed：把 `Cargo.lock`、`Cargo.toml`、`extension.toml`、`languages`、`src` 压成 zip。
+
+打 VS Code 包需要 Node.js 与 npm（`npm ci`、esbuild、vsce），打 IntelliJ 包需要 JDK 25 或更高版本，首次构建时 Gradle 会下载 IntelliJ Platform SDK；Helix 和 Zed 的产物只是把现成文件压缩。
 
 ## 常见问题
 
-### 编辑器提示找不到 riddle-lsp
+**编辑器说找不到 `riddle-lsp`。** 先在编辑器内置终端里运行 `riddle-lsp --version`。外部终端可用而编辑器里不可用时，完全退出编辑器再启动，让它重新读取 `PATH`；或者直接配置绝对路径（VS Code 用 `riddle.server.path`，Helix 改 `command`，Zed 用 `lsp.riddle-lsp.binary.path`，IntelliJ 只能修 `PATH`）。
 
-先在编辑器内置终端运行 `riddle-lsp --version`。如果外部终端可用而编辑器中不可用，请完全退出并重新启动编辑器，让它重新读取 `PATH`；也可以直接配置绝对路径。
+**VS Code 有颜色但没有诊断。** 基础高亮由扩展内的 TextMate 语法提供，和服务器是否启动无关。检查 `riddle.server.path` 与 `riddle.server.arguments`，再打开 **Output** 面板看 `Riddle Language Server` 的输出。
 
-### Helix 没有高亮或缩进查询
+**Helix 没有高亮或缩进。** 运行 `hx --health riddle`，确认语言服务器和三个 `.scm` 都显示可用；不可用时检查它们是否在配置目录的 `runtime/queries/riddle` 下。
 
-运行 `hx --health riddle`。如果 queries 显示不可用，检查三个 `.scm` 文件是否位于 Helix 配置目录的 `runtime/queries/riddle` 下。
+**Zed 只有基础语法颜色。** 在 `settings.json` 里把 `languages.Riddle.semantic_tokens` 设为 `"full"`，然后重启 language server。
 
-### Zed 只有基础语法颜色
+**IntelliJ 里没有诊断或高亮。** 确认 IDE 是 2026.1 或更高版本，在 IDE 内置终端运行 `riddle-lsp --version`；命令不可用时修好 `PATH` 并完全重启 IDE，仍不行就用 **Help | Show Log** 看 LSP 启动错误。插件本身没有语法回退。
 
-确认 `languages.Riddle.semantic_tokens` 设置为 `"full"`，然后重启 language server。Zed 默认不会请求完整语义 Token。
+**看得到跳转定义但看不到类型层级。** 类型层级依赖客户端的动态注册能力，客户端不支持时服务器不会注册 `textDocument/prepareTypeHierarchy`，这不是配置问题。
 
-### VS Code 有基础高亮但没有诊断
-
-基础高亮由扩展内的 TextMate grammar 提供，不代表 LSP 已启动。检查 `riddle.server.path`，再打开 **Output** 面板查看 `Riddle Language Server` 输出。
-
-### JetBrains 中没有诊断或高亮
-
-确认 IDE 是 2026.1 或更高版本，并把 Gradle JVM 设为 JDK 25 或更高版本；在 IDE 内置终端运行 `riddle-lsp --version`。如果命令不可用，修复 `PATH` 后完全退出并重新启动 IDE；仍有问题时通过 **Help | Show Log** 查看 LSP 启动错误。
-
-### 如果上述的一切都不起作用？
-
-请加入我们的 QQ 群: 677741637
-
-或在 Github 上提交 Issue 来寻求帮助
+**清单里出现 `unknown key build.cache` 或 `unknown key package.description`。** 这是服务器 schema 的已知偏差，`clue` 接受这些字段，警告可以忽略。

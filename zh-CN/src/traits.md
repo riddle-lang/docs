@@ -1,32 +1,60 @@
 # Trait
 
-Trait 是 Riddle 中定义共享行为的机制。它类似于其他语言中的接口（interface），用于声明一组方法和关联类型，供具体类型来实现。
+trait 声明一组方法（有的可以带默认体）和关联类型，由具体类型在 impl 块里实现。声明和实现分开写，调用时按接收者的类型解析。
 
-## 定义 Trait
-
-使用 `trait` 关键字定义一个 trait：
+## 声明与实现
 
 ```riddle
 trait Summary {
-    fun summarize() -> &str;
+    fun summarize(&self) -> i32;
 }
-```
 
-`Summary` trait 声明了一个必需方法 `summarize`，它不接受参数并返回一个 `&str`。没有函数体的方法必须由具体类型在 `impl` 块中提供。
+struct Article {
+    words: i32,
+}
 
-Trait 方法也可以提供默认实现。impl 未覆写时使用默认体，显式覆写优先；默认体可以调用同一 trait 的其他方法：
-
-```riddle
-trait Summary {
-    fun title(&self) -> &str;
-
-    fun summarize(&self) -> &str {
-        self.title()
+impl Summary for Article {
+    fun summarize(&self) -> i32 {
+        self.words
     }
 }
+
+fun main() -> i32 {
+    let article = Article { words: 3 };
+    article.summarize()
+}
 ```
 
-Trait 可以声明一个或多个父 trait：
+没有函数体的方法就是必需方法，impl 里缺一个报 E0026。带体的方法可以直接调用同一 trait 的其它方法，impl 里覆写它时以 impl 的版本为准：
+
+```riddle
+trait Value {
+    fun base(&self) -> i32;
+
+    fun doubled(&self) -> i32 {
+        self.base() * 2
+    }
+}
+
+struct Item {
+    value: i32,
+}
+
+impl Value for Item {
+    fun base(&self) -> i32 {
+        self.value
+    }
+}
+
+fun main() -> i32 {
+    let item = Item { value: 4 };
+    item.doubled()
+}
+```
+
+## 父 trait
+
+`trait Tagged: Named` 表示实现 `Tagged` 的类型也必须实现 `Named`，于是 `T: Tagged` 的泛型代码可以直接调用 `Named` 的方法：
 
 ```riddle
 trait Named {
@@ -36,66 +64,191 @@ trait Named {
 trait Tagged: Named {
     fun tag(&self) -> i32;
 }
-```
 
-`T: Tagged` 会同时满足 `T: Named`，因此泛型代码可以调用 `name`。为类型实现 `Tagged` 前，必须显式实现 `Named`；多级父 trait 会传递生效。未知父 trait 和继承环会在类型检查时报错，多个父 trait 使用 `+` 分隔。
-
-## 为类型实现 Trait
-
-在 `impl` 块中为某个具体类型实现 trait：
-
-```riddle
-struct Article {
-    title: &str,
-    body: &str,
+struct Thing {
+    value: i32,
 }
 
-impl Summary for Article {
-    fun summarize() -> &str {
-        "article"
+impl Named for Thing {
+    fun name(&self) -> i32 {
+        self.value
     }
 }
+
+impl Tagged for Thing {
+    fun tag(&self) -> i32 {
+        self.value + 1
+    }
+}
+
+fun combine<T: Tagged>(value: T) -> i32 {
+    value.name() + value.tag()
+}
+
+fun main() -> i32 {
+    combine(Thing { value: 1 })
+}
 ```
 
-## 借用 Trait Object
+父 trait 可以写多个，用 `+` 分隔。名字解析不到或继承成环报 E0044；只实现了子 trait 而没实现父 trait 报 E0036：
 
-对象安全的 trait 可以通过借用 trait object 传递运行时类型：
+```riddle
+trait Named {
+    fun name(&self) -> i32;
+}
+
+trait Tagged: Named {
+    fun tag(&self) -> i32;
+}
+
+struct Thing {
+    value: i32,
+}
+
+impl Tagged for Thing { // E0036
+    fun tag(&self) -> i32 {
+        self.value
+    }
+}
+
+fun main() {}
+```
+
+## 泛型约束
+
+bound 写在类型参数上（`<T: Named>`）或 `where` 子句里，多个 bound 用 `+` 连接，可以约束关联类型（`T: std::ops::Add<Output = T>`）。语法与调用点检查见[泛型](./generics.md)：实参不满足 bound 报 E0035，trait 名解析不到报 E0023，实参个数不符报 E0032。
+
+trait 的类型参数可以带默认值，省略时用默认值补齐：
+
+```riddle
+trait Same<Rhs = Self> {
+    fun same(&self, other: Rhs) -> bool;
+}
+
+struct Number {
+    value: i32,
+}
+
+impl Same for Number {
+    fun same(&self, other: Number) -> bool {
+        other.value == self.value
+    }
+}
+
+fun main() -> bool {
+    let a = Number { value: 1 };
+    let b = Number { value: 1 };
+    a.same(b)
+}
+```
+
+## 关联类型
+
+关联类型是 trait 里的占位类型，由每个 impl 填上具体类型。trait 的方法可以用 `Self::名字` 引用它：
+
+```riddle
+trait Source {
+    type Item;
+    fun get(&self) -> Self::Item;
+}
+
+struct Number {
+    value: i32,
+}
+
+impl Source for Number {
+    type Item = i32;
+    fun get(&self) -> i32 {
+        self.value
+    }
+}
+
+fun read<S: Source<Item = i32>>(source: &S) -> i32 {
+    source.get()
+}
+
+fun main() -> i32 {
+    let number = Number { value: 7 };
+    read(&number)
+}
+```
+
+impl 里没给必需关联类型报 E0027。`dyn Trait` 用关联类型时必须写成 `dyn Source<Item = i32>`，漏掉绑定报 E0034：
+
+```riddle
+trait Source {
+    type Item;
+    fun get(&self) -> Self::Item;
+}
+
+fun read(value: &dyn Source) -> i32 { // E0034
+    value.get()
+}
+
+fun main() {}
+```
+
+关联常量不存在：trait 的条目只允许 `fun` 和 `type`，写 `const` 在解析阶段就被拒绝（`expected trait item, found Const`），没有错误码。固有常量只能放在固有 impl 里，见 [impl 块](./impls.md)。
+
+## dyn Trait
+
+`&dyn Trait` 和 `&mut dyn Trait` 是借用视图，具体类型在运行时才确定。`&T` 可以自动转成 `&dyn Trait`，`&dyn 子 trait` 也可以转成 `&dyn 父 trait`：
 
 ```riddle
 trait Speak {
     fun speak(&self) -> i32;
 }
 
-struct Speaker { value: i32 }
-
-impl Speak for Speaker {
-    fun speak(&self) -> i32 { self.value }
-}
-
-fun call(value: &dyn Speak) -> i32 {
-    value.speak()
-}
-```
-
-`&dyn Trait` 和 `&mut dyn Trait` 是借用视图，在 MIR 中包含数据指针和方法表，调用通过方法表间接分派。父 trait 的对象安全方法也会递归加入方法表：
-
-```riddle
 trait Loud: Speak {
     fun volume(&self) -> i32;
 }
 
-fun inspect(value: &dyn Loud) -> i32 {
-    value.speak() + value.volume()
+struct Speaker {
+    value: i32,
+}
+
+impl Speak for Speaker {
+    fun speak(&self) -> i32 {
+        self.value
+    }
+}
+
+impl Loud for Speaker {
+    fun volume(&self) -> i32 {
+        self.value * 2
+    }
+}
+
+fun quiet(value: &dyn Speak) -> i32 {
+    value.speak()
+}
+
+fun main() -> i32 {
+    let speaker = Speaker { value: 5 };
+    let loud: &dyn Loud = &speaker;
+    quiet(loud)
 }
 ```
 
-当前动态对象要求方法非泛型并使用引用接收者；带泛型方法的 trait 不能用于动态调用。
+方法表是可派发方法的并集：impl 提供的方法、trait 默认方法和父 trait 的方法都在里面。父 trait 与子 trait 有同名方法时，`dyn` 上的那次调用报 E0013 ambiguous；普通方法解析不报歧义，见 [impl 块](./impls.md)。
 
-## 拥有 Trait Object
-
-裸的 `dyn Trait` 表示拥有所有权的、大小固定的动态值。把具体实现转换为它时，MIR 会把实现值放入堆存储，并保存数据指针、对象安全方法表和类型专属的 drop 槽位：
+裸 `dyn Trait` 是拥有所有权的值，可以直接当返回类型或参数类型，不需要额外的包装类型：
 
 ```riddle
+trait Speak {
+    fun speak(&self) -> i32;
+}
+
+struct Speaker {
+    value: i32,
+}
+
+impl Speak for Speaker {
+    fun speak(&self) -> i32 {
+        self.value
+    }
+}
+
 fun make() -> dyn Speak {
     Speaker { value: 7 }
 }
@@ -103,175 +256,69 @@ fun make() -> dyn Speak {
 fun call_owned(value: dyn Speak) -> i32 {
     value.speak()
 }
-```
 
-启用 GC 时，堆存储使用 `rgc_alloc` / `rgc_free`；`[runtime] gc = false` 时改用 `riddle_alloc` / `riddle_free`，因此不需要额外的 `Box<T>` 语法。拥有值离开作用域时通过 drop 槽位释放具体实现；拥有对象用普通 `&` 即可重借用为 `&dyn Trait`，并可向上转型到父 trait。数组 expected type 会逐元素构造拥有对象，带 trait bound 的泛型参数也可转换为拥有对象。跨父 trait 的同名方法会报告歧义；`dyn Fn`、`dyn FnMut` 和 `dyn FnOnce` 也可作为拥有或借用的 callable 值，并复用 `{ call, env, drop }` ABI；带泛型方法的动态对象仍未支持。
-
-## 关联类型
-
-Trait 可以包含关联类型，让实现者指定 trait 方法中用到的具体类型：
-
-```riddle
-trait Iterator {
-    type Item;
-    fun next(&mut self) -> Option<Self::Item>;
-}
-
-trait IntoIterator {
-    type Item;
-    type IntoIter;
-    fun into_iter(self) -> Self::IntoIter;
+fun main() -> i32 {
+    call_owned(make())
 }
 ```
 
-在实现时，需要为关联类型指定具体类型：
+拥有型对象在堆上保存数据指针、方法槽和一个 drop 槽；离开作用域时通过 drop 槽析构具体类型的值。`dyn Fn(i32) -> i32` 这类 callable 对象用同一套表示，接收者规则见[匿名函数与迭代器](./functional.md)。
+
+## 对象安全
+
+对象安全不是 trait 声明处的检查：trait 定义和 impl 本身都能通过，只有在 `dyn` 上调用那个方法时才报 E0013。判定条件有五个：
+
+- 第一个参数必须是 `self` 接收者，否则报 the first parameter is not a `self` receiver；
+- 接收者必须借用（`&self` / `&mut self`），按值 `self` 报 by-value `self` cannot be called through a borrowed dyn object；
+- 方法不能有自己的泛型参数（含 `const` 参数），否则报 generic methods require static monomorphization；
+- 非接收者参数里不能出现裸 `Self`；
+- 返回类型里不能出现裸 `Self`。
+
+按值 `self` 的 trait 可以正常声明和实现，只有拿它做动态调用时才失败：
 
 ```riddle
-impl Iterator for Counter {
-    type Item = i32;
+trait Duplicate {
+    fun duplicate(self) -> Self;
+}
 
-    fun next(&mut self) -> Option<Self::Item> {
-        // ...
+struct Speaker {
+    value: i32,
+}
+
+impl Duplicate for Speaker {
+    fun duplicate(self) -> Self {
+        self
     }
 }
+
+fun call(value: &dyn Duplicate) -> i32 {
+    value.duplicate().value // E0013
+}
+
+fun main() {}
 ```
 
-`Iterator` 和 `IntoIterator` 是 `for item in value` 使用的协议。标准库把 `Option<T>` 放在 `std::option`、把 `Result<T, E>` 放在 `std::result`、把 `Range` 和 `range(start, end)` 放在 `std::ops`。与 Rust 一样，prelude 会重导出 `Some`、`None`、`Ok`、`Err`、`Copy`、`Clone` 和比较 trait，但不会自动导入 `Range` 或 `range`。固定长度数组 `[T; N]` 也已经有 `IntoIterator` 实现，数组迭代器定义为 `std::array::IntoIter<T>`，因此 `[1, 2, 3]` 会匹配 `impl<T, const N: usize> IntoIterator for [T; N]`，按值产出元素且不要求元素类型是 `Copy`。在 `for` 中使用这些类型的完整示例见[闭包与迭代器](./functional.md#内置可迭代值)。
+## 孤儿规则与一致性
 
-## 泛型约束
-
-函数、trait、impl、结构体和枚举都可以通过 bound 要求类型实现某个 trait：
+trait 和类型都在同一个包里时随意实现。跨包实现要求 `Self` 或 trait 的类型实参里有本包定义的结构体或枚举，否则报 E0048：
 
 ```riddle
-fun read<T: Named>(value: T) -> i32 {
-    value.name()
+impl std::ops::Add for bool { // E0048
+    type Output = bool;
+    fun add(self, rhs: bool) -> bool {
+        self
+    }
 }
 
-fun combine<T: Named + Tagged>(value: T) -> i32 {
-    value.name() + value.tag()
-}
+fun main() {}
 ```
 
-bound 可以约束关联类型：
+`&T` 和 `&mut T` 在判定中是透明的，本地性跟着被指向的类型走。`#[fundamental]` 能把同样的透明性给自定义类型，但它是标准库保留属性，用户代码写它报 E0049。
 
-```riddle
-fun add_box<T: std::ops::Add<Output = T>>(left: T, right: T) -> T {
-    left + right
-}
-```
+同一个 trait 对重叠的类型实现两次报 E0047。impl 的 `where` 子句还要满足 Paterson 条件：bound 里的类型必须严格小于被实现的类型，`impl<T> Foo for T where Wrap<T>: Foo` 报 E0037。
 
-也可以使用 `where` 子句：
+## 内置 trait
 
-```riddle
-impl<T> Wrap for Box<T>
-where T: Marker
-{}
-```
+`Copy`、`Clone`、`Drop`、比较与运算符 trait、`Display` 和 `Debug` 都是标准库里的 trait，用 `#[lang = "..."]` 标记，编译器按标记识别它们。`Copy` 与 `Drop` 的语义见[移动语义](./move-semantics.md)，运算符、派生和格式化见[常用标准库](./standard-library.md)。
 
-`impl` 上的 `where` 约束会检查 Paterson condition：约束必须严格小于被实现的类型，避免递归 trait 求解无限增长。
-
-Trait impl 还遵循孤儿规则：当前包可以自由实现自己定义的 trait；实现依赖包或标准库的 trait 时，`Self` 或 trait 类型参数中必须有当前包定义的结构体或枚举，并且第一个本地类型之前不能出现未被类型构造器覆盖的泛型参数。引用会传递本地性但不会覆盖其中的泛型参数，类型别名则按其底层类型判断。违反规则会报告 `E0048`。
-
-`#[fundamental]` 是编译器内部属性。默认加载标准库时，只有随编译器附加的标准库可以使用它，用户包中使用会报告 `E0049`。使用 `--no-std` 时不附加内置标准库，所有参与本次编译的包都可以定义 `#[fundamental]` 类型，以支持自定义 core 和基础类型体系。
-
-该属性会让被标注的结构体或枚举在孤儿规则判定中变得透明——只要它的某个类型参数是本地类型，整体就视为本地，等价于内置的 `&T`。标准库或自定义 core 的智能指针类型可借此让 `impl ForeignTrait for FundBox<LocalType>` 这样的写法合法：
-
-```riddle
-// 默认 std 模式下该定义属于标准库；--no-std 模式下也可由自定义 core 定义
-#[fundamental]
-struct FundBox<T> { value: T }
-
-// FundBox 透明，FundBox<Local> 视为本地类型
-impl ForeignTrait for FundBox<Local> {}
-```
-
-标准库比较 trait 也使用同一套父 trait 关系：`Eq: PartialEq`、`PartialOrd: PartialEq`、`Ord: Eq + PartialOrd`。
-
-## 内置 Trait
-
-Riddle 的 `std/lib.rid` 会自动拼到用户源码后面。标准库中用 Rust 风格属性 `#[lang = "..."]` 标记编译器需要识别的特殊 trait。
-
-### Copy
-
-`Copy` 是一个标记 trait——它不包含任何方法。当一个类型实现 `Copy` 时，编译器在赋值和传参时会自动进行按位复制，而非移动所有权：
-
-```riddle
-#[lang = "copy"]
-trait Copy {
-}
-```
-
-基础类型（`i32`、`bool`、`f64` 等）在 std 中实现了 `std::marker::Copy`。用户类型通常直接使用标准派生：
-
-实现了 `Copy` 的类型在赋值后原变量仍然可用：
-
-```riddle
-#[derive(Clone, Copy)]
-struct Point {
-    x: i32,
-    y: i32,
-}
-
-fun main() {
-    let p = Point { x: 1, y: 2 };
-    let q = p;    // 复制而非移动
-    print!("{}", p.x);   // OK：p 仍然可用
-}
-```
-
-泛型 impl 也可以作为 Copy 匹配模式：
-
-```riddle
-struct Box<T> {
-    value: T,
-}
-
-impl<T: Copy> Copy for Box<T> {}
-
-fun main() {
-    let a: Box<i32> = Box { value: 1 };
-    let b = a;
-    let c = a; // OK：i32: Copy，因此 Box<i32>: Copy
-}
-```
-
-只有被 `#[lang = "copy"]` 标记的 trait 会触发 move checker 的复制语义；普通同名或未标记 trait 不会自动生效。
-
-与 Rust 一样，标准库的 `Option<T>` 和 `Result<T, E>` 使用带 bound 的条件 `Copy` 实现。编译器会检查用户 `Copy` impl 的每个结构体字段和枚举 payload；泛型字段必须能由 impl bound 证明为 `Copy`，否则报告 `E0041`。`&mut T` 也不会被视为内建 `Copy` 类型。
-
-### 其他 std lang trait
-
-当前 std 定义并实现了这些 lang trait：
-
-- `Clone`，提供可调用的 `clone`；
-- `PartialEq`、`Eq`、`PartialOrd`、`Ord`；
-- `Add`、`Sub`、`Mul`、`Div`、`Rem`、`Neg`、`Not`、位运算、移位和复合赋值 trait，均提供对应必需方法。
-
-运算 trait 的 lang 标记同时是 std 和编译器之间的内建契约。例如，`std/std/ops.rid` 中包含：
-
-```riddle
-#[lang = "add"]
-trait Add<Rhs = Self> {
-    type Output;
-    fun add(self, rhs: Rhs) -> Self::Output;
-}
-```
-
-普通代码直接调用 std 提供的标量 impl：
-
-```riddle
-fun main() -> i32 {
-    let left: i32 = 1;
-    left.add(2)
-}
-```
-
-对于 `i32` 等标量，`left.add(2)` 会直接降为 MIR `Add`，C backend 输出等价的 `left + 2`，不会生成或调用 `add__i32` 包装函数。一元运算、位运算、移位和 `add_assign` 等复合赋值方法遵循相同规则。只有带受支持 `#[lang = "..."]` 标记的 trait 的标量 impl 会开洞；未标记的同名 trait 和结构体等用户类型 impl 仍保留普通方法调用。
-
-二元、复合赋值、`PartialEq` 和 `PartialOrd` trait 都接受默认值为 `Self` 的 `Rhs` 参数，因此可以为不同的右操作数类型分别实现 trait。泛型函数中的 `T: Add<Rhs, Output = O>` 运算会保留为 trait 调用，并在单态化后选择具体 impl。普通赋值和内建复合赋值先计算右侧，再计算左侧位置；重载复合赋值按方法调用顺序先计算左侧接收者，再计算右侧。
-
-`PartialEq::eq`、`PartialOrd::partial_cmp` 和 `Ord::cmp` 可以作为普通方法调用；整数、字符和布尔值返回 `Ordering`，浮点比较遇到 NaN 时返回 `None`。当前编译器会为用户类型把算术、取余、位运算、移位、一元负号、逻辑非、复合赋值和比较运算分派到对应的 `#[lang = "..."]` trait 方法，并用 `Output` 关联类型决定非赋值算术运算的结果类型。`==` 调用 `PartialEq::eq`，`!=` 调用默认的 `PartialEq::ne`；`<`、`<=`、`>`、`>=` 分别调用 `PartialOrd::lt`、`le`、`gt`、`ge`，这些默认方法通过 `partial_cmp` 判断，遇到 `None` 时均返回 `false`。
-
-标准库还提供普通 trait `Default`、`Hash`、`Display` 和 `Debug`。`Default::default()` 会根据期望类型静态选择 impl；`Hash` 用于哈希集合；`Display` / `Debug` 通过 `Formatter` 支持 `print!`、`println!` 与 `#[derive(Debug)]`。编译器内置 `Debug`、`Clone`、`Copy`、`Default`、`Hash`、`PartialEq`、`Eq`、`PartialOrd` 和 `Ord` 派生；完整规则见[常用标准库](./standard-library.md#标准派生)。
-
-`Rem` 和 `RemAssign` 已为整数及 `f32` / `f64` 实现。C backend 对浮点余数生成 `fmod` 调用。
+`Fn`、`FnMut`、`FnOnce` 是保留名，用户声明同名 trait 报 E0048。`#[lang]` 和 `#[fundamental]` 同样只有标准库能用，用户包写它们报 E0049。

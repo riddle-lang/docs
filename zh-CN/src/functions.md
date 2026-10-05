@@ -1,32 +1,6 @@
 # 函数
 
-函数是 Riddle 程序的基本组织单位。它把一段逻辑命名，让代码可以被复用、测试和组合。
-
-当前 Riddle 使用 `fun` 定义函数。
-
-## 定义函数
-
-一个最小的函数可以没有参数，也没有显式返回类型：
-
-```riddle
-fun greet() {
-    print!("{}", "hello")
-}
-```
-
-函数名后面是一对括号，函数体放在 `{}` 中。
-
-## 参数
-
-参数写在括号里，每个参数都带类型：
-
-```riddle
-fun greet(name: &str) {
-    print!("{}", name)
-}
-```
-
-多个参数使用逗号分隔：
+用 `fun` 声明函数。参数写在括号里并带类型，返回类型跟在 `->` 后面，函数体是一个块：
 
 ```riddle
 fun add(a: i32, b: i32) -> i32 {
@@ -34,11 +8,13 @@ fun add(a: i32, b: i32) -> i32 {
 }
 ```
 
-参数也是绑定。传入非 `Copy` 值会移动所有权；整数、布尔值等实现了 `Copy` 的类型则按复制语义传入。完整规则见[移动语义](./move-semantics.md)。
+没有返回值时省略 `->`，函数体类型是 `()`。
+
+参数就是绑定：传非 `Copy` 值会把所有权移动进函数，`Copy` 类型按复制传入。见[移动语义](./move-semantics.md)。
 
 ## 返回值
 
-返回类型写在 `->` 后面：
+块的最后一个是表达式就是返回值，不需要 `return`：
 
 ```riddle
 fun square(x: i32) -> i32 {
@@ -46,48 +22,77 @@ fun square(x: i32) -> i32 {
 }
 ```
 
-函数体最后一个没有分号的表达式就是返回值。
-
-这和下面显式写 `return` 的形式表达同样的意图：
-
-```riddle
-fun square(x: i32) -> i32 {
-    return x * x;
-}
-```
-
-Riddle 鼓励在简单函数中使用尾表达式，因为它能减少样板代码。
-
-## 提前返回
-
-当你需要提前结束函数时，可以使用 `return`：
+`return` 留给提前退出：条件分支里结束函数时用它，其余情况用尾表达式更省事。
 
 ```riddle
 fun abs(x: i32) -> i32 {
     if x < 0 {
         return -x;
     }
-
     x
 }
 ```
 
-`return` 更适合错误分支、提前退出或复杂控制流。普通计算则可以交给尾表达式。
+## 函数是值
+
+函数名本身可以当值使用：
+
+```riddle
+fun add(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+fun main() {
+    let f = add;
+    println!("{}", f(1, 2)); // 3
+}
+```
+
+`fun(i32, i32) -> i32` 这种函数类型语法已经移除。需要把函数当参数传时，用 `impl Fn(i32, i32) -> i32` 或显式的 `F: Fn(i32, i32) -> i32` 约束：
+
+```riddle
+fun apply<F: Fn(i32, i32) -> i32>(f: F, x: i32) -> i32 {
+    f(x, x)
+}
+```
+
+捕获环境、`Fn` / `FnMut` / `FnOnce` 的区别和 `dyn Fn` 见[匿名函数与迭代器](./functional.md)。
+
+## impl Trait
+
+参数位置的 `impl Trait` 等价于一个隐藏的泛型参数，每次调用按具体类型单态化：
+
+```riddle
+fun show(x: impl std::fmt::Display) {
+    println!("{}", x);
+}
+
+fun main() {
+    show(1);
+    show("text");
+}
+```
+
+返回位置的 `impl Trait` 隐藏一个具体的返回类型，所有返回路径必须是同一个类型：
+
+```riddle
+fun make() -> impl std::fmt::Display {
+    1
+}
+```
+
+两个位置不能简单互推：返回位置不允许直接把调用方传进来的泛型参数还回去，`fun f(x: impl Display) -> impl Display { x }` 会报 `E0035`，因为编译器无法证明这个不透明类型实现了 `Display`。需要在调用方和被调方之间传递抽象类型时，用泛型参数或 `dyn Trait`。
 
 ## 泛型函数
 
-泛型函数的类型参数、推断、显式实参和 const 泛型见[泛型](./generics.md)一章。
+类型参数、推断、显式实参和 const 泛型见[泛型](./generics.md)。
 
-## 可调用参数与返回值
+## 只写签名
 
-参数位置可以使用一般的 `impl Trait`，它等价于由编译器引入一个满足该 bound 的隐藏泛型参数；返回位置的 `impl Trait` 隐藏一个具体返回类型，所有返回路径必须选择同一具体类型。`impl Fn`、`impl FnMut` 和 `impl FnOnce` 额外携带调用签名；需要运行时分派时可使用拥有或借用的 `dyn Trait` / `dyn Fn*`。完整的捕获规则、调用能力与限制见[闭包与迭代器](./functional.md#可调用参数与返回值)。
-
-## 函数声明
-
-有些函数可能只声明签名，具体实现由外部提供：
+语法上允许省略函数体：
 
 ```riddle
 fun external_log(value: i32);
 ```
 
-这种形式以分号结束，没有函数体。
+这种声明只通过前端检查，编译器不会为它生成任何实现；调用它时解释器会报 `call to unknown function`，C 后端生成的调用也没有对应的定义。需要调用外部实现时用 `unsafe extern "C"`，见[FFI 与 C 后端](./ffi-and-tooling.md)。

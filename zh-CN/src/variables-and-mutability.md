@@ -1,73 +1,68 @@
 # 变量与可变性
 
-变量是给值起名字的方式。在 Riddle 中，变量默认不可变。
-这个默认选择让代码更容易推理：当你看到一个普通绑定时，就可以假设它不会在后续被改写。
-
-## 使用 let 创建绑定
-
-最简单的变量绑定使用 `let`：
+`let` 创建绑定，默认不可变：重新赋值报 `E0031`。需要更新时写 `let mut`。
 
 ```riddle
 fun main() {
     let answer = 42;
-    print!("{}", answer)
-}
-```
-
-这里的 `answer` 绑定到整数 `42`。默认情况下，你不能重新给 `answer` 赋值。
-
-## 默认不可变
-
-下面的代码表达了 Riddle 不希望你在普通绑定上做的事情：
-
-```riddle
-fun main() {
-    let answer = 42;
-    answer = 43; // error: answer 不可变
-}
-```
-
-不可变默认值有两个好处。
-第一，它减少了意外修改。第二，它让移动和引用规则更容易理解，因为一个值不会在你没有注意到的地方被改掉。
-
-## 使用 mut 表示可变
-
-如果一个变量确实需要变化，需要显式写出 `mut`：
-
-```riddle
-fun main() {
     let mut count = 0;
-    count = count + 1;
-    print!("{}", count)
+    count += 1;
+    println!("{} {}", answer, count);
 }
 ```
 
-`mut` 是一种提醒：这个绑定后面会发生变化。读代码的人看到 `mut`，就知道需要关注这个值的更新路径。
+可变性属于绑定，不属于值：同一个值可以先被不可变绑定持有，再被可变绑定持有。
 
-## 变量遮蔽
+## 类型标注与推断
 
-可以用新的 `let` 声明一个同名变量，新绑定会遮蔽旧的，遮蔽前的名字在遮蔽之后不再可用：
+可以写类型，也可以让编译器从初始化式推断。字面量没有期望类型时默认整数是 `i32`、浮点是 `f64`：
 
 ```riddle
 fun main() {
-    let value = 5;
-    let value = value + 1;  // 新绑定，遮蔽旧的 value
-    print!("{}", value)
+    let age: i32 = 18;
+    let name: &str = "Riddle";
+    let ratio = 0.5;
+    println!("{} {} {}", age, name, ratio);
 }
 ```
 
-遮蔽和修改的区别在于：修改要求原绑定是 `mut` 且类型不变；遮蔽总是创建新绑定，可以改变类型：
+没有隐式数值提升：`i32` 不会自动变成 `i64` 或 `f64`，要转换就写 `as`，见[数据类型](./type-system.md)。
+
+## 遮蔽
+
+再写一次 `let` 会创建新绑定，可以换类型：
 
 ```riddle
-let label = "hello";     // &str
-let label = label.len(); // usize，类型可以不同
+fun main() {
+    let label = "hello";
+    let label = label.len();
+    println!("{}", label); // 5
+}
 ```
 
-遮蔽后的旧绑定不能再通过名字使用，但**旧的存储仍然存活到作用域结束**：如果旧值实现了 `Drop`，它会在离开当前作用域时析构，而不是在遮蔽发生时。这与 Rust 的行为不同（Rust 在遮蔽时立即析构旧值），也与 `mut` 覆盖写不同（覆盖写发生在赋值点）。内部作用域里的同名绑定会遮蔽外层绑定，离开作用域后外层绑定恢复可用（见[表达式与块](./expressions-and-blocks.md#块创建作用域)）。
+被遮蔽的值不会提前析构，它一直活到作用域结束。给一个实现了 `Drop` 的类型就能看出来：
+
+```riddle
+struct R { n: i32 }
+
+impl std::ops::Drop for R {
+    fun drop(&mut self) {
+        println!("drop {}", self.n);
+    }
+}
+
+fun main() {
+    let r = R { n: 1 };
+    let r = R { n: 2 };
+    println!("end");
+}
+```
+
+输出是 `end`、`drop 2`、`drop 1`。Rust 会在遮蔽那一行析构旧值，Riddle 不会。
 
 ## 解构绑定
 
-`let` 后面写的是一个模式，所以可以一次拆开元组或结构体：
+`let` 后面是模式，可以直接拆开元组和结构体：
 
 ```riddle
 struct Point { x: i32, y: i32 }
@@ -75,27 +70,17 @@ struct Point { x: i32, y: i32 }
 fun main() {
     let (a, b) = (1, 2);
     let Point { x, y } = Point { x: 3, y: 4 };
-    let (_, second) = (10, 20); // 用 `_` 丢弃不需要的部分
-    print!("{}", a + b + x + y + second)
+    let (_, second) = (10, 20);
+    println!("{}", a + b + x + y + second);
 }
 ```
 
-`mut` 属于单个绑定，而不是整条 `let`。想让其中一个元素可变，就写在它自己前面：
+`mut` 写在单个绑定前面，不能修饰整条语句：`let (mut count, step) = (0, 5);` 合法，`let mut (count, step) = ...` 是语法错误。
+
+普通 `let` 没有分支，模式必须覆盖该类型的全部取值，枚举变体和字面量这类可反驳模式报 `E0057`。需要处理「匹配失败」时用 `let-else`：
 
 ```riddle
-fun main() {
-    let (mut count, step) = (0, 5);
-    count = count + step;
-    print!("{}", count)
-}
-```
-
-`let mut (count, step) = ...` 不是合法写法。
-
-普通 `let` 没有备选分支，所以它的模式必须匹配该类型的每一个值。枚举变体、字面量这类只覆盖部分取值的模式会报告 `E0057`，需要改用 `match`，或者为这个绑定提供 `else` 分支：
-
-```riddle
-fun unwrap(value: Option<i32>) -> i32 {
+fun unwrap_or_zero(value: Option<i32>) -> i32 {
     let Some(number) = value else {
         return 0;
     };
@@ -103,84 +88,65 @@ fun unwrap(value: Option<i32>) -> i32 {
 }
 ```
 
-`let-else` 的 `else` 块必须发散（例如 `return`、`break`、`continue` 或无限 `loop`），匹配成功后绑定会在当前作用域的后续代码中可用；失败分支看不到这些绑定。
-
-## 类型标注
-
-变量可以写类型标注：
-
-```riddle
-fun main() {
-    let age: i32 = 18;
-    let name: &str = "Riddle";
-}
-```
-
-很多时候类型可以从初始化表达式推导出来。需要让意图更清楚，或者编译器无法推导时，可以写出类型。
+`else` 块必须发散（`return`、`break`、`continue` 或无限 `loop`），否则报 `E0066`。匹配成功后绑定在后面的代码里可用，变体载荷同样会绑到名字上；`clue build` 产出的可执行文件与 `riddle run` / `riddle repl` 在这件事上行为一致。
 
 ## 延迟初始化
 
-`let` 可以先声明、后赋值。带类型标注的绑定直接使用标注类型；没有标注时，编译器会从首次赋值推断类型：
-
-```riddle
-fun main() {
-    let value: i32;
-    value = 10;
-
-    let inferred;
-    inferred = 20;
-}
-```
-
-不可变绑定的首次赋值不需要 `mut`；如果要在首次赋值后再次赋值，声明时必须写 `mut`：
-
-```riddle
-let once: i32;
-once = 1;             // OK
-once = 2;             // E0031
-
-let mut many: i32;
-many = 1;
-many = 2;             // OK
-```
-
-使用前没有在所有路径上完成赋值会报告 `E0059`。分支需要分别初始化：
+绑定可以先声明、后赋值，编译器检查每条路径：
 
 ```riddle
 fun choose(flag: bool) -> i32 {
     let value: i32;
-    if flag { value = 10; } else { value = 20; }
+    if flag {
+        value = 10;
+    } else {
+        value = 20;
+    }
     value
 }
 ```
 
-如果某条路径没有赋值，后续使用就是错误：
+不可变绑定的首次赋值不需要 `mut`；第二次赋值报 `E0031`。某条路径上没有赋值就读取，报 `E0059`。
 
-```riddle
-fun incomplete(flag: bool) -> i32 {
-    let value: i32;
-    if flag { value = 10; }
-    value // E0059
-}
-```
+## const
 
-## const 常量
-
-`const` 用于定义编译期常量，必须写明类型并初始化：
-
-```riddle
-const MAX: i32 = 100;
-const GREETING: &str = "hello";
-```
-
-`const` 可以出现在顶层模块和 `impl` 块中。与 `let` 不同，`const` 的值在编译期确定，不能省略类型标注。
-
-整数常量初始化式支持算术、比较、位运算、一元负号/取反、`as` 转换以及引用其他常量（初始化循环会被拒绝），并通过编译期求值得出具体值。求值后的常量可以用作数组类型长度、数组重复长度和 const 泛型实参：
+`const` 声明编译期常量，必须写类型并给初始化式：
 
 ```riddle
 const WIDTH: usize = 8;
 const HEIGHT: usize = WIDTH / 2;
 
-let row: [i32; WIDTH] = [0; WIDTH];
-let grid: [i32; 32] = [0; WIDTH * HEIGHT];
+fun main() {
+    let grid: [i32; 32] = [0; WIDTH * HEIGHT];
+    println!("{}", grid[0]);
+}
 ```
+
+`const` 可以写在模块顶层，也可以写在 `impl` 块里，后者用 `类型::名字` 访问：
+
+```riddle
+struct Scale { factor: i32 }
+
+impl Scale {
+    const DEFAULT: i32 = 1;
+}
+
+fun main() {
+    println!("{}", Scale::DEFAULT);
+}
+```
+
+初始化式能用的东西比想象中少：字面量、其它常量、二元运算、无语句的块、元组/数组/结构体字面量、一元运算、字段访问、`as` 和下标。函数调用、`if`、`match`、循环、赋值都不算常量表达式，报 `E0060`。
+
+求值器按有符号 `i128` 建模，再按申明类型截断并查范围，所以下面这些都能折叠：
+
+```riddle
+const N: i32 = -1;          // ok
+const F: f64 = 1.5;         // ok，浮点常量不参与折叠，也不被拒绝
+const S: &str = "hi";       // ok，同上
+const C: char = 'x';        // ok
+const B: bool = true;       // ok
+const A: usize = 2 - 3;     // E0011：结果超出 usize 范围
+```
+
+常量值超出申明类型报 `E0011`。求值成功的非负整数常量可以用作数组长度和 const 泛型实参。
